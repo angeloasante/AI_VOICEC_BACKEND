@@ -143,9 +143,15 @@ IMPORTANT INSTRUCTIONS:
 2. Keep responses SHORT and conversational (this is a phone call, not a text chat)
 3. Don't use bullet points, lists, or formatting - speak naturally
 4. If someone wants to book a flight, direct them to WhatsApp or app.diasporaai.dev
-5. If someone asks about visa requirements, use the visa API to give them accurate info
+5. If someone asks about visa requirements, extract the countries and provide info
 6. Be warm and personable - we're here to help the African diaspora travel easier
-7. If asked complex questions, offer to transfer to a human agent`;
+7. If asked complex questions, offer to transfer to a human agent
+8. CRITICAL - TRANSCRIPTION CORRECTION: The caller may have an accent causing transcription errors. Intelligently interpret what they mean:
+   - "Danzaba", "Tansania" = Tanzania/Zanzibar
+   - "United Schendham", "you kay" = UK/United Kingdom
+   - Always confirm the countries with the caller before giving visa info
+   - Example: "Just to confirm, you want to travel from the UK to Tanzania, is that right?"
+9. When someone mentions countries, ALWAYS extract them and ask the visa question directly rather than just chatting`;
 }
 
 /**
@@ -265,7 +271,7 @@ export const countryCodeMap: { [key: string]: string } = {
   'egypt': 'EG', 'cairo': 'EG', 'egyptian': 'EG',
   'morocco': 'MA', 'moroccan': 'MA',
   'rwanda': 'RW', 'kigali': 'RW', 'rwandan': 'RW',
-  'tanzania': 'TZ', 'dar es salaam': 'TZ', 'tanzanian': 'TZ',
+  'tanzania': 'TZ', 'dar es salaam': 'TZ', 'tanzanian': 'TZ', 'zanzibar': 'TZ', 'danzaba': 'TZ', 'tansania': 'TZ',
   'ethiopia': 'ET', 'addis ababa': 'ET', 'ethiopian': 'ET',
   'senegal': 'SN', 'dakar': 'SN', 'senegalese': 'SN',
   'cameroon': 'CM', 'cameroonian': 'CM',
@@ -274,7 +280,7 @@ export const countryCodeMap: { [key: string]: string } = {
   'zimbabwe': 'ZW', 'harare': 'ZW', 'zimbabwean': 'ZW',
   
   // Europe
-  'uk': 'GB', 'united kingdom': 'GB', 'england': 'GB', 'london': 'GB', 'britain': 'GB', 'british': 'GB',
+  'uk': 'GB', 'united kingdom': 'GB', 'england': 'GB', 'london': 'GB', 'britain': 'GB', 'british': 'GB', 'united schendham': 'GB', 'you kay': 'GB',
   'germany': 'DE', 'berlin': 'DE', 'german': 'DE',
   'france': 'FR', 'paris': 'FR', 'french': 'FR',
   'netherlands': 'NL', 'amsterdam': 'NL', 'holland': 'NL', 'dutch': 'NL',

@@ -17,9 +17,21 @@ const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
 function isVisaQuery(message: string): { isVisa: boolean; from?: string; to?: string } {
   const lowerMessage = message.toLowerCase();
   
-  // Check for visa-related keywords
+  // Check for visa-related keywords OR country-to-country patterns
   const visaKeywords = ['visa', 'visas', 'travel requirement', 'do i need', 'can i travel', 'entry requirement', 'going to', 'traveling to', 'travelling to'];
   const hasVisaKeyword = visaKeywords.some(kw => lowerMessage.includes(kw));
+  
+  // Also detect "X to Y" pattern when X and Y are recognizable countries
+  const countryToCountryPattern = /(\w+(?:\s+\w+)?)\s+to\s+(\w+(?:\s+\w+)?)/i;
+  const countryMatch = lowerMessage.match(countryToCountryPattern);
+  if (countryMatch) {
+    const potentialFrom = parseCountryCode(countryMatch[1]);
+    const potentialTo = parseCountryCode(countryMatch[2]);
+    if (potentialFrom && potentialTo) {
+      // Both are valid countries - treat as visa query
+      return { isVisa: true, from: potentialFrom, to: potentialTo };
+    }
+  }
   
   if (!hasVisaKeyword) {
     return { isVisa: false };
