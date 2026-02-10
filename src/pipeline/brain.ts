@@ -18,25 +18,48 @@ function isVisaQuery(message: string): { isVisa: boolean; from?: string; to?: st
   const lowerMessage = message.toLowerCase();
   
   // Check for visa-related keywords
-  const visaKeywords = ['visa', 'visas', 'travel requirement', 'do i need', 'can i travel', 'entry requirement'];
+  const visaKeywords = ['visa', 'visas', 'travel requirement', 'do i need', 'can i travel', 'entry requirement', 'going to', 'traveling to', 'travelling to'];
   const hasVisaKeyword = visaKeywords.some(kw => lowerMessage.includes(kw));
   
   if (!hasVisaKeyword) {
     return { isVisa: false };
   }
   
-  // Try to extract countries from the message
-  // Common patterns: "from X to Y", "X to Y", "travel to Y from X"
-  const fromToPattern = /(?:from\s+)?(\w+(?:\s+\w+)?)\s+to\s+(\w+(?:\s+\w+)?)/i;
-  const match = lowerMessage.match(fromToPattern);
+  // Try multiple patterns to extract countries
+  let fromCountry: string | null = null;
+  let toCountry: string | null = null;
   
-  if (match) {
-    const fromCountry = parseCountryCode(match[1]);
-    const toCountry = parseCountryCode(match[2]);
-    
-    if (fromCountry && toCountry) {
-      return { isVisa: true, from: fromCountry, to: toCountry };
+  // Pattern 1: "from X to Y" or "X to Y"
+  const fromToPattern = /(?:from\s+)?(\w+(?:\s+\w+)?)\s+to\s+(\w+(?:\s+\w+)?)/i;
+  const match1 = lowerMessage.match(fromToPattern);
+  if (match1) {
+    fromCountry = parseCountryCode(match1[1]);
+    toCountry = parseCountryCode(match1[2]);
+  }
+  
+  // Pattern 2: "as a [nationality] going to Y" (e.g., "as a Ghanaian going to Albania")
+  if (!fromCountry || !toCountry) {
+    const asNationalityPattern = /as\s+(?:a\s+)?(\w+)(?:\s+citizen)?(?:\s+going|\s+traveling|\s+travelling)?\s+to\s+(\w+)/i;
+    const match2 = lowerMessage.match(asNationalityPattern);
+    if (match2) {
+      // Convert nationality to country (Ghanaian -> Ghana)
+      fromCountry = parseCountryCode(match2[1].replace(/n$|an$|ian$|ish$|ese$|i$/i, '')) || parseCountryCode(match2[1]);
+      toCountry = parseCountryCode(match2[2]);
     }
+  }
+  
+  // Pattern 3: "[nationality] to Y" (e.g., "Ghanaian to UK")
+  if (!fromCountry || !toCountry) {
+    const nationalityToPattern = /(\w+)(?:\s+citizen)?\s+(?:going\s+)?to\s+(\w+)/i;
+    const match3 = lowerMessage.match(nationalityToPattern);
+    if (match3) {
+      fromCountry = parseCountryCode(match3[1].replace(/n$|an$|ian$|ish$|ese$|i$/i, '')) || parseCountryCode(match3[1]);
+      toCountry = parseCountryCode(match3[2]);
+    }
+  }
+  
+  if (fromCountry && toCountry) {
+    return { isVisa: true, from: fromCountry, to: toCountry };
   }
   
   // If we have a visa keyword but couldn't extract countries, still flag as visa query
