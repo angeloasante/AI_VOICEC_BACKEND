@@ -29,6 +29,12 @@ export interface ConversationMessage {
     content: string;
     timestamp: Date;
 }
+export interface VisaContext {
+    passport?: string;
+    destination?: string;
+    residence?: string;
+    apiCalled?: boolean;
+}
 export interface CallSession {
     callSid: string;
     streamSid: string;
@@ -36,6 +42,7 @@ export interface CallSession {
     conversationHistory: ConversationMessage[];
     isProcessing: boolean;
     currentTranscript: string;
+    visaContext?: VisaContext;
 }
 export interface BusinessKnowledge {
     name: string;

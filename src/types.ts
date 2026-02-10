@@ -33,6 +33,14 @@ export interface ConversationMessage {
   timestamp: Date;
 }
 
+// Visa context accumulated during conversation
+export interface VisaContext {
+  passport?: string;      // Country code of passport holder
+  destination?: string;   // Country code of destination
+  residence?: string;     // Country code of residence (optional)
+  apiCalled?: boolean;    // Whether we've already called the API for this combo
+}
+
 // Call session state
 export interface CallSession {
   callSid: string;
@@ -41,6 +49,7 @@ export interface CallSession {
   conversationHistory: ConversationMessage[];
   isProcessing: boolean;
   currentTranscript: string;
+  visaContext?: VisaContext;  // Track visa info across conversation
 }
 
 // Business knowledge data

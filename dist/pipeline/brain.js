@@ -99,20 +99,40 @@ async function generateResponse(streamSid, userMessage, onChunk) {
     const startTime = Date.now();
     // Add user message to conversation history
     (0, call_session_js_1.addMessage)(streamSid, 'user', userMessage);
-    // Check if this is a visa query
+    // Check if THIS message contains visa-related info
     const visaCheck = isVisaQuery(userMessage);
-    if (visaCheck.isVisa && visaCheck.passport && visaCheck.destination) {
-        // PASSPORT is what matters for visa - not where you're traveling FROM
-        // e.g., Ghanaian living in UK traveling to Tanzania = check GH → TZ
-        const fromCountry = visaCheck.passport;
-        const toCountry = visaCheck.destination;
-        console.log(`🛂 Visa query detected:`);
+    // Update accumulated visa context with any new info from this message
+    if (visaCheck.passport || visaCheck.destination || visaCheck.residence) {
+        (0, call_session_js_1.updateVisaContext)(streamSid, {
+            passport: visaCheck.passport,
+            destination: visaCheck.destination,
+            residence: visaCheck.residence,
+        });
+    }
+    // Get accumulated context (may have info from previous messages)
+    const ctx = (0, call_session_js_1.getVisaContext)(streamSid);
+    // Check if user is confirming (said "yes", "correct", "that's right", etc.)
+    const isConfirmation = /^(yes|yeah|yep|correct|that's right|right|exactly|affirmative|ok|okay|sure|please|go ahead)\.?$/i.test(userMessage.trim());
+    // If we have complete visa info (from accumulated context) AND either:
+    // 1. User just confirmed, OR
+    // 2. All info was in this message
+    const hasAllInfo = ctx?.passport && ctx?.destination;
+    const shouldCallApi = hasAllInfo && !ctx?.apiCalled && (isConfirmation || (visaCheck.passport && visaCheck.destination));
+    // ALSO force API call if we have all info and Gemini would otherwise just chat
+    const forceApiCall = hasAllInfo && !ctx?.apiCalled;
+    if (forceApiCall) {
+        const fromCountry = ctx.passport;
+        const toCountry = ctx.destination;
+        console.log(`🛂 ====== VISA API CALL ======`);
+        console.log(`🛂 Visa query - calling API NOW`);
         console.log(`   📕 Passport: ${fromCountry}`);
         console.log(`   ✈️  Destination: ${toCountry}`);
-        if (visaCheck.residence) {
-            console.log(`   🏠 Residence: ${visaCheck.residence} (noted but using passport for visa check)`);
+        if (ctx.residence) {
+            console.log(`   🏠 Residence: ${ctx.residence} (noted but using passport for visa check)`);
         }
-        console.log(`🛂 Calling Visa API: ${fromCountry} → ${toCountry}`);
+        console.log(`🛂 API URL: https://app.diasporaai.dev/api/v1/visa?from=${fromCountry}&to=${toCountry}`);
+        // Mark that we're calling the API to prevent duplicate calls
+        (0, call_session_js_1.markVisaApiCalled)(streamSid);
         const visaResult = await (0, diaspora_ai_js_1.checkVisaRequirements)(fromCountry, toCountry);
         console.log(`🛂 Visa API response:`, JSON.stringify(visaResult, null, 2));
         if (visaResult.success && visaResult.data) {
@@ -135,13 +155,12 @@ async function generateResponse(streamSid, userMessage, onChunk) {
             return fallbackResponse;
         }
     }
-    else if (visaCheck.isVisa && (!visaCheck.passport || !visaCheck.destination)) {
-        // User asked about visa but we couldn't extract all details - ask for clarification
-        console.log(`🛂 Partial visa query - missing info:`, {
-            hasPassport: !!visaCheck.passport,
-            hasDestination: !!visaCheck.destination
+    // If we detected visa intent but missing some info, log it
+    if (visaCheck.isVisa && !hasAllInfo) {
+        console.log(`🛂 Partial visa info - accumulating context:`, {
+            accumulated: ctx,
+            thisMessage: { passport: visaCheck.passport, destination: visaCheck.destination }
         });
-        // Let Gemini handle asking for the missing info
     }
     // Build the prompt with business context and conversation history
     const businessContext = (0, diaspora_ai_js_1.getBusinessContext)();

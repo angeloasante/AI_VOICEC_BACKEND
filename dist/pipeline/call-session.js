@@ -9,6 +9,10 @@ exports.setProcessing = setProcessing;
 exports.isProcessing = isProcessing;
 exports.endSession = endSession;
 exports.getSessionStats = getSessionStats;
+exports.updateVisaContext = updateVisaContext;
+exports.getVisaContext = getVisaContext;
+exports.hasCompleteVisaInfo = hasCompleteVisaInfo;
+exports.markVisaApiCalled = markVisaApiCalled;
 // In-memory store for active call sessions
 const activeSessions = new Map();
 /**
@@ -22,6 +26,7 @@ function createSession(callSid, streamSid) {
         conversationHistory: [],
         isProcessing: false,
         currentTranscript: '',
+        visaContext: {}, // Initialize empty visa context
     };
     activeSessions.set(streamSid, session);
     console.log(`📞 Session created for call ${callSid} (stream: ${streamSid})`);
@@ -106,5 +111,46 @@ function getSessionStats() {
         active: activeSessions.size,
         sessions: Array.from(activeSessions.keys()),
     };
+}
+/**
+ * Update visa context for a session (accumulates info across messages)
+ */
+function updateVisaContext(streamSid, updates) {
+    const session = activeSessions.get(streamSid);
+    if (!session)
+        return;
+    if (!session.visaContext) {
+        session.visaContext = {};
+    }
+    // Only update if we have new info (don't overwrite with undefined)
+    if (updates.passport)
+        session.visaContext.passport = updates.passport;
+    if (updates.destination)
+        session.visaContext.destination = updates.destination;
+    if (updates.residence)
+        session.visaContext.residence = updates.residence;
+    if (updates.apiCalled !== undefined)
+        session.visaContext.apiCalled = updates.apiCalled;
+    console.log(`🛂 Visa context updated:`, session.visaContext);
+}
+/**
+ * Get visa context for a session
+ */
+function getVisaContext(streamSid) {
+    const session = activeSessions.get(streamSid);
+    return session?.visaContext;
+}
+/**
+ * Check if we have enough info to call the Visa API
+ */
+function hasCompleteVisaInfo(streamSid) {
+    const ctx = getVisaContext(streamSid);
+    return !!(ctx?.passport && ctx?.destination && !ctx?.apiCalled);
+}
+/**
+ * Mark that we've called the Visa API for this combo
+ */
+function markVisaApiCalled(streamSid) {
+    updateVisaContext(streamSid, { apiCalled: true });
 }
 //# sourceMappingURL=call-session.js.map
