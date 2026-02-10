@@ -2,7 +2,6 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Synthesizer = void 0;
 const config_js_1 = require("../config.js");
-const audio_utils_js_1 = require("./audio-utils.js");
 /**
  * Text-to-Speech synthesizer using ElevenLabs
  */
@@ -23,7 +22,10 @@ class Synthesizer {
         const startTime = Date.now();
         try {
             // Use ElevenLabs streaming endpoint
-            const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${config_js_1.config.elevenlabs.voiceId}/stream`, {
+            // CRITICAL: output_format must be in query params, NOT body (per ElevenLabs docs)
+            const url = new URL(`https://api.elevenlabs.io/v1/text-to-speech/${config_js_1.config.elevenlabs.voiceId}/stream`);
+            url.searchParams.set('output_format', 'ulaw_8000'); // 8kHz mulaw - native Twilio format
+            const response = await fetch(url.toString(), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -32,7 +34,6 @@ class Synthesizer {
                 body: JSON.stringify({
                     text,
                     model_id: config_js_1.config.elevenlabs.modelId,
-                    output_format: 'pcm_16000', // 16kHz 16-bit PCM
                     voice_settings: {
                         stability: 0.5,
                         similarity_boost: 0.75,
@@ -51,7 +52,9 @@ class Synthesizer {
             // Process the streaming audio response
             const reader = response.body.getReader();
             let audioBuffer = Buffer.alloc(0);
-            const CHUNK_SIZE = 640; // 640 bytes = 320 samples at 16-bit = 20ms at 16kHz
+            // Buffer into larger chunks: 8000 bytes = 1 second of audio at 8kHz mulaw
+            // Use 1600 bytes = 200ms chunks for good balance of latency and fewer chunks
+            const CHUNK_SIZE = 1600;
             while (true) {
                 const { done, value } = await reader.read();
                 if (done)
@@ -62,22 +65,13 @@ class Synthesizer {
                 while (audioBuffer.length >= CHUNK_SIZE) {
                     const chunk = audioBuffer.subarray(0, CHUNK_SIZE);
                     audioBuffer = audioBuffer.subarray(CHUNK_SIZE);
-                    // Downsample from 16kHz to 8kHz for Twilio
-                    const downsampled = this.downsample(chunk);
-                    // Convert to mulaw for Twilio
-                    const mulawChunk = (0, audio_utils_js_1.linear16ToMulaw)(downsampled);
-                    // Send as base64
-                    onAudioChunk(mulawChunk.toString('base64'));
+                    // Send as base64 directly - already in Twilio's native format
+                    onAudioChunk(chunk.toString('base64'));
                 }
             }
             // Process any remaining audio
             if (audioBuffer.length > 0) {
-                // Pad to complete chunk if needed
-                const padded = Buffer.alloc(CHUNK_SIZE);
-                audioBuffer.copy(padded);
-                const downsampled = this.downsample(padded);
-                const mulawChunk = (0, audio_utils_js_1.linear16ToMulaw)(downsampled);
-                onAudioChunk(mulawChunk.toString('base64'));
+                onAudioChunk(audioBuffer.toString('base64'));
             }
             const latency = Date.now() - startTime;
             console.log(`🔊 TTS completed in ${latency}ms for: "${text.substring(0, 50)}..."`);
@@ -86,21 +80,6 @@ class Synthesizer {
             console.error('❌ ElevenLabs TTS error:', error);
             throw error;
         }
-    }
-    /**
-     * Downsample from 16kHz to 8kHz (simple averaging)
-     * Takes every other sample from 16-bit PCM audio
-     */
-    downsample(input) {
-        const output = Buffer.alloc(input.length / 2);
-        for (let i = 0, j = 0; i < input.length - 3; i += 4, j += 2) {
-            // Average two consecutive samples
-            const sample1 = input.readInt16LE(i);
-            const sample2 = input.readInt16LE(i + 2);
-            const averaged = Math.round((sample1 + sample2) / 2);
-            output.writeInt16LE(averaged, j);
-        }
-        return output;
     }
     /**
      * Synthesize a simple response without streaming

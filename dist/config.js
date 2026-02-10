@@ -25,7 +25,7 @@ exports.config = {
     // Gemini - AI Brain
     gemini: {
         apiKey: process.env.GEMINI_API_KEY || '',
-        model: 'gemini-2.0-flash-exp',
+        model: 'gemini-2.0-flash',
     },
     // ElevenLabs - Text-to-Speech
     elevenlabs: {

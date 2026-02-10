@@ -125,8 +125,11 @@ class MediaStreamHandler extends events_1.EventEmitter {
      */
     handleMark(message) {
         // Mark indicates that a chunk of audio has finished playing
-        // We can use this to know when the AI has finished speaking
-        console.log(`✓ Audio mark: ${message.mark?.name}`);
+        // Only log significant marks to reduce noise
+        const markName = message.mark?.name || '';
+        if (markName.includes('end')) {
+            console.log(`✓ Audio playback complete: ${markName}`);
+        }
     }
     /**
      * Handle completed transcript - generate and speak response
@@ -166,6 +169,8 @@ class MediaStreamHandler extends events_1.EventEmitter {
             await this.synthesizer.synthesize(text, (audioChunk) => {
                 this.queueAudio(audioChunk);
             });
+            // Flush all audio after TTS completes for this text segment
+            this.flushAudioQueue();
         }
         catch (error) {
             console.error('Error synthesizing speech:', error);
@@ -176,7 +181,41 @@ class MediaStreamHandler extends events_1.EventEmitter {
      */
     queueAudio(audioBase64) {
         this.audioQueue.push(audioBase64);
-        this.processAudioQueue();
+        // Don't process immediately - let audio batch up
+    }
+    /**
+     * Flush all queued audio to Twilio
+     */
+    flushAudioQueue() {
+        if (this.audioQueue.length === 0)
+            return;
+        if (this.ws.readyState !== ws_1.default.OPEN)
+            return;
+        let chunksSent = 0;
+        while (this.audioQueue.length > 0) {
+            const audioChunk = this.audioQueue.shift();
+            // Send media message to Twilio
+            const mediaMessage = {
+                event: 'media',
+                streamSid: this.streamSid,
+                media: {
+                    payload: audioChunk,
+                },
+            };
+            this.ws.send(JSON.stringify(mediaMessage));
+            chunksSent++;
+        }
+        // Send ONE mark at the end to track when all audio finishes
+        this.markCounter++;
+        const markMessage = {
+            event: 'mark',
+            streamSid: this.streamSid,
+            mark: {
+                name: `response-end-${this.markCounter}`,
+            },
+        };
+        this.ws.send(JSON.stringify(markMessage));
+        console.log(`📤 Sent ${chunksSent} audio chunks to Twilio`);
     }
     /**
      * Process the audio queue and send to Twilio

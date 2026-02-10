@@ -47,6 +47,10 @@ export declare class MediaStreamHandler extends EventEmitter {
      */
     private queueAudio;
     /**
+     * Flush all queued audio to Twilio
+     */
+    private flushAudioQueue;
+    /**
      * Process the audio queue and send to Twilio
      */
     private processAudioQueue;

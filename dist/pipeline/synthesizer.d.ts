@@ -10,11 +10,6 @@ export declare class Synthesizer {
      */
     synthesize(text: string, onAudioChunk: (audioBase64: string) => void): Promise<void>;
     /**
-     * Downsample from 16kHz to 8kHz (simple averaging)
-     * Takes every other sample from 16-bit PCM audio
-     */
-    private downsample;
-    /**
      * Synthesize a simple response without streaming
      * Used for quick responses like greetings
      */

@@ -26,28 +26,28 @@ export class Synthesizer {
     const startTime = Date.now();
 
     try {
-      // Use ElevenLabs streaming endpoint with ulaw_8000 for Twilio compatibility
-      const response = await fetch(
-        `https://api.elevenlabs.io/v1/text-to-speech/${config.elevenlabs.voiceId}/stream`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'xi-api-key': config.elevenlabs.apiKey,
+      // Use ElevenLabs streaming endpoint
+      // CRITICAL: output_format must be in query params, NOT body (per ElevenLabs docs)
+      const url = new URL(`https://api.elevenlabs.io/v1/text-to-speech/${config.elevenlabs.voiceId}/stream`);
+      url.searchParams.set('output_format', 'ulaw_8000'); // 8kHz mulaw - native Twilio format
+      
+      const response = await fetch(url.toString(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'xi-api-key': config.elevenlabs.apiKey,
+        },
+        body: JSON.stringify({
+          text,
+          model_id: config.elevenlabs.modelId,
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75,
+            style: 0.0,
+            use_speaker_boost: true,
           },
-          body: JSON.stringify({
-            text,
-            model_id: config.elevenlabs.modelId,
-            output_format: 'ulaw_8000', // 8kHz mulaw - native Twilio format!
-            voice_settings: {
-              stability: 0.5,
-              similarity_boost: 0.75,
-              style: 0.0,
-              use_speaker_boost: true,
-            },
-          }),
-        }
-      );
+        }),
+      });
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -61,7 +61,10 @@ export class Synthesizer {
       // Process the streaming audio response
       const reader = response.body.getReader();
       let audioBuffer = Buffer.alloc(0);
-      const CHUNK_SIZE = 160; // 160 bytes = 20ms at 8kHz mulaw
+      
+      // Buffer into larger chunks: 8000 bytes = 1 second of audio at 8kHz mulaw
+      // Use 1600 bytes = 200ms chunks for good balance of latency and fewer chunks
+      const CHUNK_SIZE = 1600;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -71,7 +74,7 @@ export class Synthesizer {
         // Append new data to buffer
         audioBuffer = Buffer.concat([audioBuffer, Buffer.from(value)]);
 
-        // Process complete chunks - no conversion needed, already mulaw 8kHz!
+        // Process complete chunks
         while (audioBuffer.length >= CHUNK_SIZE) {
           const chunk = audioBuffer.subarray(0, CHUNK_SIZE);
           audioBuffer = audioBuffer.subarray(CHUNK_SIZE);
