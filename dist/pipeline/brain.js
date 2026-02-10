@@ -71,10 +71,11 @@ async function generateResponse(streamSid, userMessage, onChunk) {
         if (visaResult.success && visaResult.data) {
             const visaResponse = (0, diaspora_ai_js_1.formatVisaResponse)(visaResult.data);
             // Send the visa response in chunks for natural speech
+            // MUST await each chunk to ensure correct order
             const sentences = visaResponse.split(/(?<=[.!?])\s+/);
             for (const sentence of sentences) {
                 if (sentence.trim()) {
-                    onChunk(sentence.trim());
+                    await onChunk(sentence.trim());
                 }
             }
             const latency = Date.now() - startTime;
@@ -133,14 +134,14 @@ Remember: Keep your response concise and natural for a phone call. Don't use bul
                     const sentence = sentenceBuffer.substring(0, endIndex).trim();
                     sentenceBuffer = sentenceBuffer.substring(endIndex + 1);
                     if (sentence) {
-                        onChunk(sentence);
+                        await onChunk(sentence);
                     }
                 }
             }
         }
         // Send any remaining text
         if (sentenceBuffer.trim()) {
-            onChunk(sentenceBuffer.trim());
+            await onChunk(sentenceBuffer.trim());
         }
         const latency = Date.now() - startTime;
         console.log(`🧠 Gemini response generated in ${latency}ms`);
@@ -153,7 +154,7 @@ Remember: Keep your response concise and natural for a phone call. Don't use bul
         // Fallback response
         const fallback = "I'm sorry, I'm having a bit of trouble understanding. Could you repeat that?";
         (0, call_session_js_1.addMessage)(streamSid, 'assistant', fallback);
-        onChunk(fallback);
+        await onChunk(fallback);
         return fallback;
     }
 }

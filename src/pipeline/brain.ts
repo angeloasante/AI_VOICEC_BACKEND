@@ -73,7 +73,7 @@ function isVisaQuery(message: string): { isVisa: boolean; from?: string; to?: st
 export async function generateResponse(
   streamSid: string,
   userMessage: string,
-  onChunk: (text: string) => void
+  onChunk: (text: string) => void | Promise<void>
 ): Promise<string> {
   const startTime = Date.now();
   
@@ -93,10 +93,11 @@ export async function generateResponse(
       const visaResponse = formatVisaResponse(visaResult.data);
       
       // Send the visa response in chunks for natural speech
+      // MUST await each chunk to ensure correct order
       const sentences = visaResponse.split(/(?<=[.!?])\s+/);
       for (const sentence of sentences) {
         if (sentence.trim()) {
-          onChunk(sentence.trim());
+          await onChunk(sentence.trim());
         }
       }
       
@@ -167,7 +168,7 @@ Remember: Keep your response concise and natural for a phone call. Don't use bul
           sentenceBuffer = sentenceBuffer.substring(endIndex + 1);
           
           if (sentence) {
-            onChunk(sentence);
+            await onChunk(sentence);
           }
         }
       }
@@ -175,7 +176,7 @@ Remember: Keep your response concise and natural for a phone call. Don't use bul
     
     // Send any remaining text
     if (sentenceBuffer.trim()) {
-      onChunk(sentenceBuffer.trim());
+      await onChunk(sentenceBuffer.trim());
     }
     
     const latency = Date.now() - startTime;
@@ -192,7 +193,7 @@ Remember: Keep your response concise and natural for a phone call. Don't use bul
     // Fallback response
     const fallback = "I'm sorry, I'm having a bit of trouble understanding. Could you repeat that?";
     addMessage(streamSid, 'assistant', fallback);
-    onChunk(fallback);
+    await onChunk(fallback);
     
     return fallback;
   }
