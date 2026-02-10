@@ -87,14 +87,43 @@ function isVisaQuery(message: string): { isVisa: boolean; passport?: string; des
   }
   
   // Pattern 3: "from X" - this often means passport/origin country in visa context
-  // e.g., "from Ghana to South Africa" - Ghana is their passport country
-  const fromPattern = /from\s+(?:the\s+)?(\w+(?:\s+\w+)?)\s+to\s+/i;
-  const fromMatch = lowerMessage.match(fromPattern);
-  if (fromMatch && !passport) {
-    const fromCountry = parseCountryCode(fromMatch[1]);
-    if (fromCountry) {
-      passport = fromCountry;
-      console.log(`🛂 Passport inferred from "from X to Y": ${passport} (from "${fromMatch[1]}")`);
+  // Handles both "from Ghana to South Africa" AND standalone "From Ghana."
+  if (!passport) {
+    // First try "from X to Y" pattern
+    const fromToPattern = /from\s+(?:the\s+)?(\w+(?:\s+\w+)?)\s+to\s+/i;
+    const fromToMatch = lowerMessage.match(fromToPattern);
+    if (fromToMatch) {
+      const fromCountry = parseCountryCode(fromToMatch[1]);
+      if (fromCountry) {
+        passport = fromCountry;
+        console.log(`🛂 Passport inferred from "from X to Y": ${passport} (from "${fromToMatch[1]}")`);
+      }
+    }
+    
+    // Also try standalone "from Ghana" or "from Ghana." at end
+    if (!passport) {
+      const fromStandalonePattern = /from\s+(?:the\s+)?(\w+(?:\s+\w+)?)\.?$/i;
+      const fromStandaloneMatch = lowerMessage.match(fromStandalonePattern);
+      if (fromStandaloneMatch) {
+        const fromCountry = parseCountryCode(fromStandaloneMatch[1]);
+        if (fromCountry) {
+          passport = fromCountry;
+          console.log(`🛂 Passport inferred from standalone "from X": ${passport} (from "${fromStandaloneMatch[1]}")`);
+        }
+      }
+    }
+    
+    // Also try "travelling/traveling from X"
+    if (!passport) {
+      const travelFromPattern = /(?:travel(?:l)?ing|going)\s+from\s+(?:the\s+)?(\w+(?:\s+\w+)?)/i;
+      const travelFromMatch = lowerMessage.match(travelFromPattern);
+      if (travelFromMatch) {
+        const fromCountry = parseCountryCode(travelFromMatch[1]);
+        if (fromCountry) {
+          passport = fromCountry;
+          console.log(`🛂 Passport inferred from "travelling from X": ${passport} (from "${travelFromMatch[1]}")`);
+        }
+      }
     }
   }
   
