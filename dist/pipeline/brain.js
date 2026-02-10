@@ -10,60 +10,86 @@ const call_session_js_1 = require("./call-session.js");
 const genAI = new generative_ai_1.GoogleGenerativeAI(config_js_1.config.gemini.apiKey);
 /**
  * Check if user is asking about visa requirements
+ * Smart detection that prioritizes PASSPORT/CITIZENSHIP over residence
  */
 function isVisaQuery(message) {
     const lowerMessage = message.toLowerCase();
-    // Check for visa-related keywords OR country-to-country patterns
-    const visaKeywords = ['visa', 'visas', 'travel requirement', 'do i need', 'can i travel', 'entry requirement', 'going to', 'traveling to', 'travelling to'];
+    // Check for visa-related keywords
+    const visaKeywords = ['visa', 'visas', 'travel requirement', 'do i need', 'can i travel', 'entry requirement', 'going to', 'traveling to', 'travelling to', 'travel from', 'travel to'];
     const hasVisaKeyword = visaKeywords.some(kw => lowerMessage.includes(kw));
-    // Also detect "X to Y" pattern when X and Y are recognizable countries
-    const countryToCountryPattern = /(\w+(?:\s+\w+)?)\s+to\s+(\w+(?:\s+\w+)?)/i;
-    const countryMatch = lowerMessage.match(countryToCountryPattern);
-    if (countryMatch) {
-        const potentialFrom = (0, diaspora_ai_js_1.parseCountryCode)(countryMatch[1]);
-        const potentialTo = (0, diaspora_ai_js_1.parseCountryCode)(countryMatch[2]);
-        if (potentialFrom && potentialTo) {
-            // Both are valid countries - treat as visa query
-            return { isVisa: true, from: potentialFrom, to: potentialTo };
+    let passport = null;
+    let destination = null;
+    let residence = null;
+    // Pattern 1: Detect citizenship/passport explicitly - THIS IS THE KEY FOR VISA
+    // "I'm a Ghanaian citizen", "Ghanaian passport", "I'm Ghanaian", "I hold a Nigerian passport"
+    const citizenshipPatterns = [
+        /(?:i'm|i am|im)\s+(?:a\s+)?(\w+)\s+citizen/i,
+        /(\w+)\s+passport/i,
+        /(?:i'm|i am|im)\s+(?:a\s+)?(\w+)(?:\s+national)?/i,
+        /(?:i\s+hold|holding)\s+(?:a\s+)?(\w+)\s+passport/i,
+        /citizen\s+of\s+(\w+)/i,
+        /nationality\s+(?:is\s+)?(\w+)/i,
+    ];
+    for (const pattern of citizenshipPatterns) {
+        const match = lowerMessage.match(pattern);
+        if (match) {
+            const nationality = match[1];
+            // Convert nationality to country code (Ghanaian -> GH)
+            passport = (0, diaspora_ai_js_1.parseCountryCode)(nationality) || (0, diaspora_ai_js_1.parseCountryCode)(nationality.replace(/n$|an$|ian$|ish$|ese$|i$/i, ''));
+            if (passport)
+                break;
         }
     }
-    if (!hasVisaKeyword) {
-        return { isVisa: false };
-    }
-    // Try multiple patterns to extract countries
-    let fromCountry = null;
-    let toCountry = null;
-    // Pattern 1: "from X to Y" or "X to Y"
-    const fromToPattern = /(?:from\s+)?(\w+(?:\s+\w+)?)\s+to\s+(\w+(?:\s+\w+)?)/i;
-    const match1 = lowerMessage.match(fromToPattern);
-    if (match1) {
-        fromCountry = (0, diaspora_ai_js_1.parseCountryCode)(match1[1]);
-        toCountry = (0, diaspora_ai_js_1.parseCountryCode)(match1[2]);
-    }
-    // Pattern 2: "as a [nationality] going to Y" (e.g., "as a Ghanaian going to Albania")
-    if (!fromCountry || !toCountry) {
-        const asNationalityPattern = /as\s+(?:a\s+)?(\w+)(?:\s+citizen)?(?:\s+going|\s+traveling|\s+travelling)?\s+to\s+(\w+)/i;
-        const match2 = lowerMessage.match(asNationalityPattern);
-        if (match2) {
-            // Convert nationality to country (Ghanaian -> Ghana)
-            fromCountry = (0, diaspora_ai_js_1.parseCountryCode)(match2[1].replace(/n$|an$|ian$|ish$|ese$|i$/i, '')) || (0, diaspora_ai_js_1.parseCountryCode)(match2[1]);
-            toCountry = (0, diaspora_ai_js_1.parseCountryCode)(match2[2]);
+    // Pattern 2: Detect destination - "to Zanzibar", "going to Tanzania", etc.
+    const destPatterns = [
+        /(?:to|going to|travel(?:ing|ling)?\s+to|visit(?:ing)?)\s+(\w+(?:\s+\w+)?)/i,
+    ];
+    for (const pattern of destPatterns) {
+        const match = lowerMessage.match(pattern);
+        if (match) {
+            destination = (0, diaspora_ai_js_1.parseCountryCode)(match[1]);
+            if (destination)
+                break;
         }
     }
-    // Pattern 3: "[nationality] to Y" (e.g., "Ghanaian to UK")
-    if (!fromCountry || !toCountry) {
-        const nationalityToPattern = /(\w+)(?:\s+citizen)?\s+(?:going\s+)?to\s+(\w+)/i;
-        const match3 = lowerMessage.match(nationalityToPattern);
-        if (match3) {
-            fromCountry = (0, diaspora_ai_js_1.parseCountryCode)(match3[1].replace(/n$|an$|ian$|ish$|ese$|i$/i, '')) || (0, diaspora_ai_js_1.parseCountryCode)(match3[1]);
-            toCountry = (0, diaspora_ai_js_1.parseCountryCode)(match3[2]);
+    // Pattern 3: Detect residence - "from UK", "UK resident", "living in UK"
+    const residencePatterns = [
+        /(?:from|in|living in|based in|resident of|reside in)\s+(?:the\s+)?(\w+(?:\s+\w+)?)/i,
+        /(\w+)\s+resident/i,
+    ];
+    for (const pattern of residencePatterns) {
+        const match = lowerMessage.match(pattern);
+        if (match) {
+            const res = (0, diaspora_ai_js_1.parseCountryCode)(match[1]);
+            // Only set residence if it's different from passport
+            if (res && res !== passport) {
+                residence = res;
+                break;
+            }
         }
     }
-    if (fromCountry && toCountry) {
-        return { isVisa: true, from: fromCountry, to: toCountry };
+    // Fallback: Simple "X to Y" pattern if no passport detected
+    if (!passport && !destination) {
+        const simplePattern = /(\w+(?:\s+\w+)?)\s+to\s+(\w+(?:\s+\w+)?)/i;
+        const match = lowerMessage.match(simplePattern);
+        if (match) {
+            const from = (0, diaspora_ai_js_1.parseCountryCode)(match[1]);
+            const to = (0, diaspora_ai_js_1.parseCountryCode)(match[2]);
+            if (from && to) {
+                passport = from;
+                destination = to;
+            }
+        }
     }
-    // If we have a visa keyword but couldn't extract countries, still flag as visa query
-    return { isVisa: true };
+    // If we found relevant info, it's a visa query
+    if (destination || (hasVisaKeyword && (passport || destination))) {
+        console.log(`🛂 Visa query parsed:`, { passport, destination, residence });
+        return { isVisa: true, passport: passport || undefined, destination: destination || undefined, residence: residence || undefined };
+    }
+    if (hasVisaKeyword) {
+        return { isVisa: true };
+    }
+    return { isVisa: false };
 }
 /**
  * Generate a response using Gemini AI
@@ -75,21 +101,47 @@ async function generateResponse(streamSid, userMessage, onChunk) {
     (0, call_session_js_1.addMessage)(streamSid, 'user', userMessage);
     // Check if this is a visa query
     const visaCheck = isVisaQuery(userMessage);
-    if (visaCheck.isVisa && visaCheck.from && visaCheck.to) {
-        // Call the Visa API
-        console.log(`🛂 Visa query detected: ${visaCheck.from} → ${visaCheck.to}`);
-        const visaResult = await (0, diaspora_ai_js_1.checkVisaRequirements)(visaCheck.from, visaCheck.to);
+    if (visaCheck.isVisa && visaCheck.passport && visaCheck.destination) {
+        // PASSPORT is what matters for visa - not where you're traveling FROM
+        // e.g., Ghanaian living in UK traveling to Tanzania = check GH → TZ
+        const fromCountry = visaCheck.passport;
+        const toCountry = visaCheck.destination;
+        console.log(`🛂 Visa query detected:`);
+        console.log(`   📕 Passport: ${fromCountry}`);
+        console.log(`   ✈️  Destination: ${toCountry}`);
+        if (visaCheck.residence) {
+            console.log(`   🏠 Residence: ${visaCheck.residence} (noted but using passport for visa check)`);
+        }
+        console.log(`🛂 Calling Visa API: ${fromCountry} → ${toCountry}`);
+        const visaResult = await (0, diaspora_ai_js_1.checkVisaRequirements)(fromCountry, toCountry);
+        console.log(`🛂 Visa API response:`, JSON.stringify(visaResult, null, 2));
         if (visaResult.success && visaResult.data) {
             const visaResponse = (0, diaspora_ai_js_1.formatVisaResponse)(visaResult.data);
             // Send the FULL visa response as one chunk for consistent speech
-            // This avoids pauses between sentences and is faster
             await onChunk(visaResponse);
             const latency = Date.now() - startTime;
             console.log(`🛂 Visa response generated in ${latency}ms`);
             (0, call_session_js_1.addMessage)(streamSid, 'assistant', visaResponse);
             return visaResponse;
         }
-        // If visa API failed, fall through to Gemini
+        else {
+            // Visa API failed or route not available - give user-friendly feedback
+            console.log(`🛂 Visa API failed:`, visaResult.error);
+            const fallbackResponse = `I don't currently have visa information for travel from ${fromCountry} to ${toCountry} in my system. I'd recommend checking our website at app.diasporaai.dev for the most up-to-date visa requirements, or I can connect you with one of our human agents who can help. Would you like me to do that?`;
+            await onChunk(fallbackResponse);
+            (0, call_session_js_1.addMessage)(streamSid, 'assistant', fallbackResponse);
+            const latency = Date.now() - startTime;
+            console.log(`🛂 Visa fallback response in ${latency}ms`);
+            return fallbackResponse;
+        }
+    }
+    else if (visaCheck.isVisa && (!visaCheck.passport || !visaCheck.destination)) {
+        // User asked about visa but we couldn't extract all details - ask for clarification
+        console.log(`🛂 Partial visa query - missing info:`, {
+            hasPassport: !!visaCheck.passport,
+            hasDestination: !!visaCheck.destination
+        });
+        // Let Gemini handle asking for the missing info
     }
     // Build the prompt with business context and conversation history
     const businessContext = (0, diaspora_ai_js_1.getBusinessContext)();

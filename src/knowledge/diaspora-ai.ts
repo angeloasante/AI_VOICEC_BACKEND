@@ -175,9 +175,12 @@ export async function checkVisaRequirements(
     };
   }
   
+  const apiUrl = `https://app.diasporaai.dev/api/v1/visa?from=${encodeURIComponent(fromCountry)}&to=${encodeURIComponent(toCountry)}`;
+  console.log(`🌐 Visa API Request: GET ${apiUrl}`);
+  
   try {
     const response = await fetch(
-      `https://app.diasporaai.dev/api/v1/visa?from=${encodeURIComponent(fromCountry)}&to=${encodeURIComponent(toCountry)}`,
+      apiUrl,
       {
         method: 'GET',
         headers: {
@@ -187,15 +190,27 @@ export async function checkVisaRequirements(
       }
     );
     
+    console.log(`🌐 Visa API Response Status: ${response.status}`);
+    
     if (!response.ok) {
-      const errorData = await response.json() as { error?: { message?: string } };
-      return {
-        success: false,
-        error: errorData.error?.message || `API error: ${response.status}`
-      };
+      const errorText = await response.text();
+      console.log(`🌐 Visa API Error Body: ${errorText}`);
+      try {
+        const errorData = JSON.parse(errorText) as { error?: { message?: string } };
+        return {
+          success: false,
+          error: errorData.error?.message || `API error: ${response.status}`
+        };
+      } catch {
+        return {
+          success: false,
+          error: `API error: ${response.status} - ${errorText}`
+        };
+      }
     }
     
     const data = await response.json() as { data: any };
+    console.log(`🌐 Visa API Success:`, JSON.stringify(data, null, 2));
     return {
       success: true,
       data: data.data
