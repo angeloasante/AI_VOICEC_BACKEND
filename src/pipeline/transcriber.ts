@@ -38,13 +38,11 @@ export class Transcriber extends EventEmitter {
       url.searchParams.set('language', config.deepgram.language);
       url.searchParams.set('punctuate', 'true');
       url.searchParams.set('interim_results', 'true');
-      // Increased endpointing to give user more time to speak
-      url.searchParams.set('endpointing', '500'); // 500ms silence = end of speech
-      url.searchParams.set('utterance_end_ms', '1500'); // Wait longer before ending utterance
+      // Fast endpointing for responsive conversation
+      url.searchParams.set('endpointing', '250'); // 250ms silence = end of speech (quick detection)
+      url.searchParams.set('utterance_end_ms', '800'); // 800ms to end utterance
       // Smart formatting for better recognition
       url.searchParams.set('smart_format', 'true');
-      // Enable VAD events for better speech detection
-      url.searchParams.set('vad_events', 'true');
 
       console.log(`🎤 Connecting to Deepgram for stream ${this.streamSid}...`);
 

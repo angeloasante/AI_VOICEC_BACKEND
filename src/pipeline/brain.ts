@@ -92,14 +92,9 @@ export async function generateResponse(
     if (visaResult.success && visaResult.data) {
       const visaResponse = formatVisaResponse(visaResult.data);
       
-      // Send the visa response in chunks for natural speech
-      // MUST await each chunk to ensure correct order
-      const sentences = visaResponse.split(/(?<=[.!?])\s+/);
-      for (const sentence of sentences) {
-        if (sentence.trim()) {
-          await onChunk(sentence.trim());
-        }
-      }
+      // Send the FULL visa response as one chunk for consistent speech
+      // This avoids pauses between sentences and is faster
+      await onChunk(visaResponse);
       
       const latency = Date.now() - startTime;
       console.log(`🛂 Visa response generated in ${latency}ms`);
