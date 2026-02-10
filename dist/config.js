@@ -30,8 +30,13 @@ exports.config = {
     // ElevenLabs - Text-to-Speech
     elevenlabs: {
         apiKey: process.env.ELEVENLABS_API_KEY || '',
-        voiceId: process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL', // Default: Sarah
+        voiceId: process.env.ELEVENLABS_VOICE_ID || 'qVp1puw1HjHIbF91A9Xi', // Diaspora AI voice
         modelId: 'eleven_turbo_v2_5',
+    },
+    // Diaspora AI - Visa API
+    diasporaAI: {
+        visaApiKey: process.env.DIASPORA_AI_VISA_API_KEY || '',
+        visaApiUrl: 'https://app.diasporaai.dev/api/v1/visa',
     },
 };
 // Validate required environment variables

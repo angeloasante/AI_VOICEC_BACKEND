@@ -19,6 +19,10 @@ export declare const config: {
         voiceId: string;
         modelId: string;
     };
+    diasporaAI: {
+        visaApiKey: string;
+        visaApiUrl: string;
+    };
 };
 export declare function validateConfig(): void;
 //# sourceMappingURL=config.d.ts.map

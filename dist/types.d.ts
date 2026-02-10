@@ -44,10 +44,18 @@ export interface BusinessKnowledge {
     hours: string;
     address: string;
     phone: string;
+    website?: string;
+    bookingApp?: string;
     menu?: MenuItem[];
-    services?: Service[];
-    faqs: FAQ[];
-    policies: string[];
+    services?: ServiceInfo[];
+    paymentMethods?: PaymentMethods;
+    popularRoutes?: Route[];
+    founder?: string;
+    founded?: string;
+    specialties?: string[];
+    faq?: FAQ[];
+    faqs?: FAQ[];
+    policies?: string[];
 }
 export interface MenuItem {
     name: string;
@@ -56,11 +64,22 @@ export interface MenuItem {
     category: string;
     options?: string[];
 }
-export interface Service {
+export interface ServiceInfo {
     name: string;
     description: string;
-    duration: string;
-    price: number;
+    features?: string[];
+    duration?: string;
+    price?: number;
+}
+export interface PaymentMethods {
+    cards: string[];
+    mobileMoney: string[];
+    other: string[];
+}
+export interface Route {
+    from: string;
+    to: string;
+    airlines: string[];
 }
 export interface FAQ {
     question: string;

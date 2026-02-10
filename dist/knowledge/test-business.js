@@ -174,11 +174,11 @@ MENU:
         });
     });
     context += '\nFREQUENTLY ASKED QUESTIONS:\n';
-    faqs.forEach(faq => {
+    faqs?.forEach(faq => {
         context += `Q: ${faq.question}\nA: ${faq.answer}\n\n`;
     });
     context += 'POLICIES:\n';
-    policies.forEach(policy => {
+    policies?.forEach(policy => {
         context += `- ${policy}\n`;
     });
     context += `

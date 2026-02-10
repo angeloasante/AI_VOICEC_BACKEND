@@ -4,10 +4,35 @@ exports.generateResponse = generateResponse;
 exports.generateGreeting = generateGreeting;
 const generative_ai_1 = require("@google/generative-ai");
 const config_js_1 = require("../config.js");
-const test_business_js_1 = require("../knowledge/test-business.js");
+const diaspora_ai_js_1 = require("../knowledge/diaspora-ai.js");
 const call_session_js_1 = require("./call-session.js");
 // Initialize Gemini client
 const genAI = new generative_ai_1.GoogleGenerativeAI(config_js_1.config.gemini.apiKey);
+/**
+ * Check if user is asking about visa requirements
+ */
+function isVisaQuery(message) {
+    const lowerMessage = message.toLowerCase();
+    // Check for visa-related keywords
+    const visaKeywords = ['visa', 'visas', 'travel requirement', 'do i need', 'can i travel', 'entry requirement'];
+    const hasVisaKeyword = visaKeywords.some(kw => lowerMessage.includes(kw));
+    if (!hasVisaKeyword) {
+        return { isVisa: false };
+    }
+    // Try to extract countries from the message
+    // Common patterns: "from X to Y", "X to Y", "travel to Y from X"
+    const fromToPattern = /(?:from\s+)?(\w+(?:\s+\w+)?)\s+to\s+(\w+(?:\s+\w+)?)/i;
+    const match = lowerMessage.match(fromToPattern);
+    if (match) {
+        const fromCountry = (0, diaspora_ai_js_1.parseCountryCode)(match[1]);
+        const toCountry = (0, diaspora_ai_js_1.parseCountryCode)(match[2]);
+        if (fromCountry && toCountry) {
+            return { isVisa: true, from: fromCountry, to: toCountry };
+        }
+    }
+    // If we have a visa keyword but couldn't extract countries, still flag as visa query
+    return { isVisa: true };
+}
 /**
  * Generate a response using Gemini AI
  * Streams the response for lower latency
@@ -16,15 +41,37 @@ async function generateResponse(streamSid, userMessage, onChunk) {
     const startTime = Date.now();
     // Add user message to conversation history
     (0, call_session_js_1.addMessage)(streamSid, 'user', userMessage);
+    // Check if this is a visa query
+    const visaCheck = isVisaQuery(userMessage);
+    if (visaCheck.isVisa && visaCheck.from && visaCheck.to) {
+        // Call the Visa API
+        console.log(`🛂 Visa query detected: ${visaCheck.from} → ${visaCheck.to}`);
+        const visaResult = await (0, diaspora_ai_js_1.checkVisaRequirements)(visaCheck.from, visaCheck.to);
+        if (visaResult.success && visaResult.data) {
+            const visaResponse = (0, diaspora_ai_js_1.formatVisaResponse)(visaResult.data);
+            // Send the visa response in chunks for natural speech
+            const sentences = visaResponse.split(/(?<=[.!?])\s+/);
+            for (const sentence of sentences) {
+                if (sentence.trim()) {
+                    onChunk(sentence.trim());
+                }
+            }
+            const latency = Date.now() - startTime;
+            console.log(`🛂 Visa response generated in ${latency}ms`);
+            (0, call_session_js_1.addMessage)(streamSid, 'assistant', visaResponse);
+            return visaResponse;
+        }
+        // If visa API failed, fall through to Gemini
+    }
     // Build the prompt with business context and conversation history
-    const businessContext = (0, test_business_js_1.getBusinessContext)();
+    const businessContext = (0, diaspora_ai_js_1.getBusinessContext)();
     const conversationHistory = (0, call_session_js_1.getConversationContext)(streamSid);
     const systemPrompt = `${businessContext}
 
 CONVERSATION SO FAR:
 ${conversationHistory || '(This is the start of the conversation)'}
 
-Remember: Keep your response concise and natural for a phone call. Don't use bullet points or formatting - just speak naturally.`;
+Remember: Keep your response concise and natural for a phone call. Don't use bullet points or formatting - just speak naturally. Maximum 2-3 sentences.`;
     try {
         const model = genAI.getGenerativeModel({
             model: config_js_1.config.gemini.model,
@@ -44,7 +91,7 @@ Remember: Keep your response concise and natural for a phone call. Don't use bul
                 },
                 {
                     role: 'model',
-                    parts: [{ text: 'Understood. I\'m ready to help customers of Tony\'s Burger Joint. I\'ll keep my responses natural and conversational.' }],
+                    parts: [{ text: 'Understood. I\'m the AI phone assistant for Diaspora AI. I\'ll help customers with flight bookings, visa information, and general inquiries. I\'ll keep my responses natural and conversational.' }],
                 },
             ],
         });
@@ -93,7 +140,7 @@ Remember: Keep your response concise and natural for a phone call. Don't use bul
  * Generate a greeting for the start of a call
  */
 async function generateGreeting(streamSid) {
-    const greeting = "Hi there! Thanks for calling Tony's Burger Joint. How can I help you today?";
+    const greeting = "Hello! Thank you for calling Diaspora AI, your AI-powered travel assistant. How can I help you today?";
     (0, call_session_js_1.addMessage)(streamSid, 'assistant', greeting);
     return greeting;
 }
