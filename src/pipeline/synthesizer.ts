@@ -1,9 +1,4 @@
 import { config } from '../config.js';
-import { linear16ToMulaw } from './audio-utils.js';
-
-interface ElevenLabsStreamResponse {
-  audio: Buffer;
-}
 
 /**
  * Text-to-Speech synthesizer using ElevenLabs
@@ -31,7 +26,7 @@ export class Synthesizer {
     const startTime = Date.now();
 
     try {
-      // Use ElevenLabs streaming endpoint
+      // Use ElevenLabs streaming endpoint with ulaw_8000 for Twilio compatibility
       const response = await fetch(
         `https://api.elevenlabs.io/v1/text-to-speech/${config.elevenlabs.voiceId}/stream`,
         {
@@ -43,7 +38,7 @@ export class Synthesizer {
           body: JSON.stringify({
             text,
             model_id: config.elevenlabs.modelId,
-            output_format: 'pcm_16000', // 16kHz 16-bit PCM
+            output_format: 'ulaw_8000', // 8kHz mulaw - native Twilio format!
             voice_settings: {
               stability: 0.5,
               similarity_boost: 0.75,
@@ -66,7 +61,7 @@ export class Synthesizer {
       // Process the streaming audio response
       const reader = response.body.getReader();
       let audioBuffer = Buffer.alloc(0);
-      const CHUNK_SIZE = 640; // 640 bytes = 320 samples at 16-bit = 20ms at 16kHz
+      const CHUNK_SIZE = 160; // 160 bytes = 20ms at 8kHz mulaw
 
       while (true) {
         const { done, value } = await reader.read();
@@ -76,31 +71,19 @@ export class Synthesizer {
         // Append new data to buffer
         audioBuffer = Buffer.concat([audioBuffer, Buffer.from(value)]);
 
-        // Process complete chunks
+        // Process complete chunks - no conversion needed, already mulaw 8kHz!
         while (audioBuffer.length >= CHUNK_SIZE) {
           const chunk = audioBuffer.subarray(0, CHUNK_SIZE);
           audioBuffer = audioBuffer.subarray(CHUNK_SIZE);
-
-          // Downsample from 16kHz to 8kHz for Twilio
-          const downsampled = this.downsample(chunk);
           
-          // Convert to mulaw for Twilio
-          const mulawChunk = linear16ToMulaw(downsampled);
-          
-          // Send as base64
-          onAudioChunk(mulawChunk.toString('base64'));
+          // Send as base64 directly - already in Twilio's native format
+          onAudioChunk(chunk.toString('base64'));
         }
       }
 
       // Process any remaining audio
       if (audioBuffer.length > 0) {
-        // Pad to complete chunk if needed
-        const padded = Buffer.alloc(CHUNK_SIZE);
-        audioBuffer.copy(padded);
-        
-        const downsampled = this.downsample(padded);
-        const mulawChunk = linear16ToMulaw(downsampled);
-        onAudioChunk(mulawChunk.toString('base64'));
+        onAudioChunk(audioBuffer.toString('base64'));
       }
 
       const latency = Date.now() - startTime;
@@ -110,24 +93,6 @@ export class Synthesizer {
       console.error('❌ ElevenLabs TTS error:', error);
       throw error;
     }
-  }
-
-  /**
-   * Downsample from 16kHz to 8kHz (simple averaging)
-   * Takes every other sample from 16-bit PCM audio
-   */
-  private downsample(input: Buffer): Buffer {
-    const output = Buffer.alloc(input.length / 2);
-    
-    for (let i = 0, j = 0; i < input.length - 3; i += 4, j += 2) {
-      // Average two consecutive samples
-      const sample1 = input.readInt16LE(i);
-      const sample2 = input.readInt16LE(i + 2);
-      const averaged = Math.round((sample1 + sample2) / 2);
-      output.writeInt16LE(averaged, j);
-    }
-    
-    return output;
   }
 
   /**
