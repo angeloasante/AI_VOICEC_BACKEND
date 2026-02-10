@@ -21,23 +21,34 @@ function isVisaQuery(message) {
     let destination = null;
     let residence = null;
     // Pattern 1: Detect citizenship/passport explicitly - THIS IS THE KEY FOR VISA
-    // "I'm a Ghanaian citizen", "Ghanaian passport", "I'm Ghanaian", "I hold a Nigerian passport"
+    // Examples: "I'm a Ghanaian citizen", "Ghanaian passport", "I'm Ghanaian", "I hold a Nigerian passport"
     const citizenshipPatterns = [
-        /(?:i'm|i am|im)\s+(?:a\s+)?(\w+)\s+citizen/i,
-        /(\w+)\s+passport/i,
-        /(?:i'm|i am|im)\s+(?:a\s+)?(\w+)(?:\s+national)?/i,
-        /(?:i\s+hold|holding)\s+(?:a\s+)?(\w+)\s+passport/i,
-        /citizen\s+of\s+(\w+)/i,
-        /nationality\s+(?:is\s+)?(\w+)/i,
+        /(?:i'm|i am|im)\s+(?:a\s+)?(\w+)\s+citizen/i, // "I'm a Ghanaian citizen"
+        /(\w+)\s+citizen/i, // "Ghanaian citizen"
+        /(\w+)\s+passport/i, // "Ghanaian passport"
+        /(?:i\s+hold|holding|have)\s+(?:a\s+)?(\w+)\s+passport/i, // "I hold a Ghanaian passport"
+        /citizen\s+of\s+(\w+)/i, // "citizen of Ghana"
+        /nationality\s+(?:is\s+)?(\w+)/i, // "nationality is Ghanaian"
+        /(?:i'm|i am|im)\s+(?:a\s+)?(\w+)$/i, // "I'm a Ghanaian" at end of message
+        /(?:i'm|i am|im)\s+(?:a\s+)?(\w+)\s+(?:living|based|residing)/i, // "I'm a Ghanaian living in..."
     ];
     for (const pattern of citizenshipPatterns) {
         const match = lowerMessage.match(pattern);
         if (match) {
             const nationality = match[1];
+            console.log(`🛂 Citizenship pattern matched: "${nationality}" from pattern: ${pattern}`);
             // Convert nationality to country code (Ghanaian -> GH)
-            passport = (0, diaspora_ai_js_1.parseCountryCode)(nationality) || (0, diaspora_ai_js_1.parseCountryCode)(nationality.replace(/n$|an$|ian$|ish$|ese$|i$/i, ''));
-            if (passport)
+            // Try the full word first (ghanaian -> GH), then try stripping suffix
+            passport = (0, diaspora_ai_js_1.parseCountryCode)(nationality);
+            if (!passport) {
+                // Try stripping common nationality suffixes
+                const stripped = nationality.replace(/n$|an$|ian$|ish$|ese$|i$/i, '');
+                passport = (0, diaspora_ai_js_1.parseCountryCode)(stripped);
+            }
+            if (passport) {
+                console.log(`🛂 Passport detected: ${passport} (from "${nationality}")`);
                 break;
+            }
         }
     }
     // Pattern 2: Detect destination - "to Zanzibar", "going to Tanzania", etc.
@@ -47,14 +58,34 @@ function isVisaQuery(message) {
     for (const pattern of destPatterns) {
         const match = lowerMessage.match(pattern);
         if (match) {
-            destination = (0, diaspora_ai_js_1.parseCountryCode)(match[1]);
-            if (destination)
-                break;
+            // Filter out false positives
+            const word = match[1].toLowerCase();
+            if (!['me', 'you', 'us', 'them', 'know', 'check', 'help'].includes(word)) {
+                destination = (0, diaspora_ai_js_1.parseCountryCode)(match[1]);
+                if (destination) {
+                    console.log(`🛂 Destination detected: ${destination} (from "${match[1]}")`);
+                    break;
+                }
+            }
         }
     }
-    // Pattern 3: Detect residence - "from UK", "UK resident", "living in UK"
+    // Pattern 3: "from X" - this often means passport/origin country in visa context
+    // e.g., "from Ghana to South Africa" - Ghana is their passport country
+    const fromPattern = /from\s+(?:the\s+)?(\w+(?:\s+\w+)?)\s+to\s+/i;
+    const fromMatch = lowerMessage.match(fromPattern);
+    if (fromMatch && !passport) {
+        const fromCountry = (0, diaspora_ai_js_1.parseCountryCode)(fromMatch[1]);
+        if (fromCountry) {
+            passport = fromCountry;
+            console.log(`🛂 Passport inferred from "from X to Y": ${passport} (from "${fromMatch[1]}")`);
+        }
+    }
+    // Pattern 4: Detect residence - "living in UK", "UK resident", "based in UK"
+    // Only when explicitly about residence, not travel origin
     const residencePatterns = [
-        /(?:from|in|living in|based in|resident of|reside in)\s+(?:the\s+)?(\w+(?:\s+\w+)?)/i,
+        /living\s+in\s+(?:the\s+)?(\w+(?:\s+\w+)?)/i,
+        /based\s+in\s+(?:the\s+)?(\w+(?:\s+\w+)?)/i,
+        /residing\s+in\s+(?:the\s+)?(\w+(?:\s+\w+)?)/i,
         /(\w+)\s+resident/i,
     ];
     for (const pattern of residencePatterns) {
@@ -64,27 +95,42 @@ function isVisaQuery(message) {
             // Only set residence if it's different from passport
             if (res && res !== passport) {
                 residence = res;
+                console.log(`🛂 Residence detected: ${residence} (from "${match[1]}")`);
                 break;
             }
         }
     }
     // Fallback: Simple "X to Y" pattern if no passport detected
+    // BUT filter out false positives like "listen to me", "talk to me", etc.
     if (!passport && !destination) {
         const simplePattern = /(\w+(?:\s+\w+)?)\s+to\s+(\w+(?:\s+\w+)?)/i;
         const match = lowerMessage.match(simplePattern);
         if (match) {
-            const from = (0, diaspora_ai_js_1.parseCountryCode)(match[1]);
-            const to = (0, diaspora_ai_js_1.parseCountryCode)(match[2]);
-            if (from && to) {
-                passport = from;
-                destination = to;
+            // Filter out common false positives
+            const falsePositives = ['me', 'you', 'us', 'them', 'him', 'her', 'it', 'this', 'that'];
+            const toWord = match[2].toLowerCase();
+            if (!falsePositives.includes(toWord)) {
+                const from = (0, diaspora_ai_js_1.parseCountryCode)(match[1]);
+                const to = (0, diaspora_ai_js_1.parseCountryCode)(match[2]);
+                if (from && to) {
+                    passport = from;
+                    destination = to;
+                }
             }
         }
     }
-    // If we found relevant info, it's a visa query
-    if (destination || (hasVisaKeyword && (passport || destination))) {
-        console.log(`🛂 Visa query parsed:`, { passport, destination, residence });
-        return { isVisa: true, passport: passport || undefined, destination: destination || undefined, residence: residence || undefined };
+    // ALWAYS return any extracted info so we can accumulate across messages
+    // Even if it's not a "visa query" per se, we want to track passport/destination
+    const hasExtractedInfo = passport || destination || residence;
+    const isVisaRelated = hasVisaKeyword || !!(passport && destination);
+    if (hasExtractedInfo) {
+        console.log(`🛂 Visa query parsed:`, { passport, destination, residence, isVisa: isVisaRelated });
+        return {
+            isVisa: isVisaRelated,
+            passport: passport || undefined,
+            destination: destination || undefined,
+            residence: residence || undefined
+        };
     }
     if (hasVisaKeyword) {
         return { isVisa: true };
