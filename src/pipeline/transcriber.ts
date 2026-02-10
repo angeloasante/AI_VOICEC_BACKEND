@@ -39,8 +39,9 @@ export class Transcriber extends EventEmitter {
       url.searchParams.set('punctuate', 'true');
       url.searchParams.set('interim_results', 'true');
       // Fast endpointing for responsive conversation
-      url.searchParams.set('endpointing', '250'); // 250ms silence = end of speech (quick detection)
-      url.searchParams.set('utterance_end_ms', '800'); // 800ms to end utterance
+      url.searchParams.set('endpointing', '300'); // 300ms silence = end of speech
+      url.searchParams.set('utterance_end_ms', '1000'); // 1000ms to finalize utterance
+      url.searchParams.set('vad_events', 'true'); // Required for utterance_end_ms
       // Smart formatting for better recognition
       url.searchParams.set('smart_format', 'true');
 
