@@ -1,23 +1,31 @@
-# 🎙️ AI Voice Backend
+# 🎙️ Diaspora AI Voice Backend
 
-Real-time conversational AI voice backend for handling phone calls. Built with Express, WebSockets, and integrated with Twilio for telephony, Deepgram for speech-to-text, Google Gemini for AI responses, and ElevenLabs for natural text-to-speech.
+Real-time conversational AI voice backend for **Diaspora AI** - the AI-powered travel booking platform for the African diaspora. Handle phone calls with natural voice AI that can answer questions about flights, check visa requirements, and guide customers through the booking process.
+
+Built with Express, WebSockets, and integrated with Twilio for telephony, Deepgram for speech-to-text, Google Gemini for AI responses, and ElevenLabs for natural text-to-speech.
 
 [![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template)
+
+**Live Deployment:** https://voice-ai-backend-production-8abb.up.railway.app
 
 ---
 
 ## 📋 Table of Contents
 
 - [Overview](#overview)
+- [What It Does](#what-it-does)
 - [Architecture](#architecture)
 - [Call Flow](#call-flow)
+- [Features](#features)
 - [Project Structure](#project-structure)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Configuration](#configuration)
+- [Environment Variables](#environment-variables)
 - [Development](#development)
 - [Deployment](#deployment)
 - [API Endpoints](#api-endpoints)
+- [Visa API Integration](#visa-api-integration)
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
 
@@ -25,22 +33,32 @@ Real-time conversational AI voice backend for handling phone calls. Built with E
 
 ## 🎯 Overview
 
-This is an MVP voice AI system that enables natural phone conversations with an AI assistant. When someone calls your Twilio phone number, they're connected to an AI that can:
+This is the voice AI backend for **Diaspora AI**, enabling natural phone conversations with an AI travel assistant. When someone calls the Twilio phone number, they're connected to an AI that can:
 
-- **Answer questions** about a business (hours, location, menu items)
-- **Take orders** and confirm details back to the caller
-- **Handle natural conversation** with context memory throughout the call
-- **Respond quickly** with sub-2-second latency for natural dialogue
+### What It Does
 
-### Key Features
+| Capability | Description |
+|------------|-------------|
+| 🛫 **Flight Information** | Answer questions about booking flights to Africa |
+| 🛂 **Visa Requirements** | Check real-time visa requirements using the Diaspora AI Visa API |
+| 💳 **Payment Options** | Explain card and mobile money payment methods (MTN MoMo, M-Pesa, etc.) |
+| 📱 **Booking Guidance** | Direct customers to WhatsApp or the booking website |
+| 🗣️ **Natural Conversation** | Handle natural dialogue with context memory throughout the call |
+| 👤 **Human Handoff** | Transfer to a live agent when needed |
 
-- ✅ Real-time bidirectional audio streaming via WebSocket
-- ✅ Speech-to-text with Deepgram (300ms latency)
-- ✅ AI responses powered by Google Gemini 2.0 Flash
-- ✅ Natural voice synthesis with ElevenLabs
-- ✅ Conversation memory within each call session
-- ✅ Interruption handling (caller can cut off the AI)
-- ✅ Railway-ready deployment configuration
+### Example Conversations
+
+**Flight Inquiry:**
+> *Caller:* "I want to book a flight from London to Accra"  
+> *AI:* "Great! We can help you book flights to Accra. You can message us on WhatsApp or visit app.diasporaai.dev to search and compare over 50 flight options. Would you like me to tell you more about our booking process?"
+
+**Visa Check:**
+> *Caller:* "Do I need a visa from Ghana to UK?"  
+> *AI:* "For travel from Ghana to the United Kingdom, you will need a visa. You'll need a Standard Visitor Visa. You'll need to apply at the embassy or consulate before traveling. Your passport should be valid for at least 6 months. Would you like me to help you book a flight for this trip?"
+
+**Payment Question:**
+> *Caller:* "Can I pay with mobile money?"  
+> *AI:* "Yes! We accept MTN Mobile Money, Vodafone Cash, AirtelTigo Money, M-Pesa, bank transfers, and USSD. This means you can pay the African way, not just with cards."
 
 ---
 
@@ -48,10 +66,10 @@ This is an MVP voice AI system that enables natural phone conversations with an 
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              PHONE CALL FLOW                                 │
+│                         DIASPORA AI VOICE CALL FLOW                          │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-    📱 Caller                    ☁️ Twilio                    🖥️ Your Server
+    📱 Caller                    ☁️ Twilio                    🖥️ Voice Backend
         │                            │                              │
         │  ── Dials Number ────────► │                              │
         │                            │                              │
@@ -62,28 +80,39 @@ This is an MVP voice AI system that enables natural phone conversations with an 
         │                            │ ═══ WebSocket Connection ═══ │
         │                            │      (bidirectional audio)   │
         │                            │                              │
-        │  ◄── "Hi! How can I ─────  │ ◄════════════════════════════│
-        │       help you?"           │                              │
+        │  ◄── "Hello! Thank you ──  │ ◄════════════════════════════│
+        │       for calling          │                              │
+        │       Diaspora AI..."      │                              │
         │                            │                              │
-        │  ── "I'd like to ────────► │ ════════════════════════════►│
-        │      order a burger"       │                              │
+        │  ── "I need a visa ──────► │ ════════════════════════════►│
+        │      from Ghana to UK"     │                              │
         │                            │         ┌──────────────┐     │
         │                            │         │   Deepgram   │     │
-        │                            │         │    (STT)     │     │
+        │                            │         │  Nova-2 STT  │     │
         │                            │         └──────┬───────┘     │
         │                            │                │              │
         │                            │         ┌──────▼───────┐     │
-        │                            │         │   Gemini     │     │
-        │                            │         │    (AI)      │     │
+        │                            │         │  Visa Query  │     │
+        │                            │         │  Detected?   │     │
         │                            │         └──────┬───────┘     │
+        │                            │           Yes  │  No          │
         │                            │                │              │
-        │                            │         ┌──────▼───────┐     │
-        │                            │         │  ElevenLabs  │     │
-        │                            │         │    (TTS)     │     │
-        │                            │         └──────┬───────┘     │
-        │                            │                │              │
-        │  ◄── "One burger, ───────  │ ◄════════════════════════════│
-        │       great choice!"       │                              │
+        │                            │    ┌───────────┴──────────┐  │
+        │                            │    ▼                      ▼  │
+        │                            │ ┌──────────┐     ┌──────────┐│
+        │                            │ │Diaspora  │     │  Gemini  ││
+        │                            │ │Visa API  │     │   2.0    ││
+        │                            │ └────┬─────┘     └────┬─────┘│
+        │                            │      └────────┬───────┘      │
+        │                            │               │               │
+        │                            │        ┌──────▼───────┐      │
+        │                            │        │  ElevenLabs  │      │
+        │                            │        │    TTS       │      │
+        │                            │        └──────┬───────┘      │
+        │                            │               │               │
+        │  ◄── "For travel from ───  │ ◄════════════════════════════│
+        │       Ghana to UK,         │                              │
+        │       you will need..."    │                              │
         │                            │                              │
         └────────────────────────────┴──────────────────────────────┘
 ```
@@ -92,7 +121,7 @@ This is an MVP voice AI system that enables natural phone conversations with an 
 
 ## ⏱️ Call Flow Timing
 
-Each exchange follows this timing pattern:
+Each exchange follows this timing pattern for natural conversation:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -101,15 +130,15 @@ Each exchange follows this timing pattern:
 │                                                                  │
 │  Caller speaks          ~~~~~~~~~~~~~~~  (1-3 seconds)          │
 │                                                                  │
-│  Silence detection      ·····           (300-500ms)             │
+│  Silence detection      ······          (500ms)                 │
 │  (Deepgram endpointing)       ↓                                 │
 │                               speech_final = true                │
 │                                                                  │
 │  Deepgram finalizes     ··              (50-100ms)              │
 │  transcript                                                      │
 │                                                                  │
-│  Gemini processes       ·········       (300-800ms)             │
-│  + starts streaming           ↓                                 │
+│  Gemini/Visa API        ·········       (300-800ms)             │
+│  processes + streams          ↓                                 │
 │                               first token received               │
 │                                                                  │
 │  ElevenLabs generates   ·····           (100-200ms)             │
@@ -122,14 +151,47 @@ Each exchange follows this timing pattern:
 │  TOTAL SILENCE GAP: ~800ms - 1.6 seconds                        │
 │  ════════════════════════════════════════                        │
 │                                                                  │
-│  AI speaks              ~~~~~~~~~~~~~~~~~~~  (1-4 seconds)      │
-│                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 
-Target: Under 1 second feels like natural conversation
+Target: Under 1 second = natural conversation
 Acceptable: 1-1.5 seconds
-Too slow: Over 1.5 seconds (caller says "hello?")
 ```
+
+---
+
+## ✨ Features
+
+### Core Features
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Real-time Audio Streaming | ✅ | Bidirectional WebSocket with Twilio Media Streams |
+| Speech-to-Text | ✅ | Deepgram Nova-2 with 500ms endpointing |
+| AI Responses | ✅ | Google Gemini 2.0 Flash with streaming |
+| Text-to-Speech | ✅ | ElevenLabs with μ-law 8kHz (Twilio native format) |
+| Conversation Memory | ✅ | Context maintained throughout each call |
+| Visa API Integration | ✅ | Real-time visa requirements lookup |
+
+### Audio Configuration
+
+| Setting | Value | Reason |
+|---------|-------|--------|
+| Sample Rate | 8000 Hz | Twilio telephony standard |
+| Encoding | μ-law (mulaw) | Twilio's native format |
+| Channels | 1 (mono) | Phone audio is mono |
+| Chunk Size | 1600 bytes | 200ms chunks for smooth playback |
+| Output Format | `ulaw_8000` | ElevenLabs direct Twilio support |
+
+### Deepgram Settings
+
+| Setting | Value | Purpose |
+|---------|-------|---------|
+| Model | nova-2 | Best accuracy for conversational speech |
+| Language | en-GB | British English |
+| Endpointing | 500ms | Wait 500ms silence before finalizing |
+| Utterance End | 1500ms | Additional buffer for pauses |
+| Smart Format | true | Better number/date recognition |
+| VAD Events | true | Voice activity detection |
 
 ---
 
@@ -148,13 +210,14 @@ backend/
 │   ├── pipeline/
 │   │   ├── media-stream.ts    # Twilio WebSocket handler (orchestrator)
 │   │   ├── transcriber.ts     # Deepgram real-time STT
-│   │   ├── brain.ts           # Gemini AI with conversation context
+│   │   ├── brain.ts           # Gemini AI + Visa API routing
 │   │   ├── synthesizer.ts     # ElevenLabs TTS with streaming
 │   │   ├── call-session.ts    # In-memory call state management
-│   │   └── audio-utils.ts     # mulaw ↔ linear16 conversion
+│   │   └── audio-utils.ts     # Audio format utilities
 │   │
 │   └── knowledge/
-│       └── test-business.ts   # Hardcoded test restaurant data
+│       ├── diaspora-ai.ts     # Diaspora AI business knowledge + Visa API
+│       └── test-business.ts   # Legacy test restaurant (not used)
 │
 ├── dist/                      # Compiled JavaScript (after build)
 ├── package.json
@@ -172,11 +235,10 @@ backend/
 | **Webhook** | `incoming-call.ts` | Responds to Twilio with TwiML to start Media Stream |
 | **Media Stream** | `media-stream.ts` | Orchestrates the full pipeline for each call |
 | **Transcriber** | `transcriber.ts` | Real-time speech-to-text via Deepgram WebSocket |
-| **Brain** | `brain.ts` | Gemini AI with business context and conversation history |
+| **Brain** | `brain.ts` | Routes to Visa API or Gemini, manages responses |
 | **Synthesizer** | `synthesizer.ts` | Text-to-speech via ElevenLabs streaming API |
 | **Session** | `call-session.ts` | Tracks conversation state in memory |
-| **Audio Utils** | `audio-utils.ts` | Converts between Twilio's mulaw and Deepgram's linear16 |
-| **Knowledge** | `test-business.ts` | Test business data (Tony's Burger Joint) |
+| **Diaspora AI** | `diaspora-ai.ts` | Business knowledge + Visa API integration |
 
 ---
 
@@ -184,13 +246,13 @@ backend/
 
 Before you begin, you'll need accounts and API keys from:
 
-| Service | Purpose | Free Tier |
-|---------|---------|-----------|
-| [Twilio](https://www.twilio.com) | Phone number & telephony | $15 trial credit |
-| [Deepgram](https://deepgram.com) | Speech-to-text | $200 free credit |
-| [Google AI Studio](https://aistudio.google.com) | Gemini AI | Free tier available |
-| [ElevenLabs](https://elevenlabs.io) | Text-to-speech | Free tier available |
-| [Railway](https://railway.app) | Deployment | $5 free monthly |
+| Service | Purpose | Free Tier | Sign Up |
+|---------|---------|-----------|---------|
+| Twilio | Phone number & telephony | $15 trial credit | [twilio.com](https://www.twilio.com) |
+| Deepgram | Speech-to-text | $200 free credit | [deepgram.com](https://deepgram.com) |
+| Google AI Studio | Gemini AI | Free tier available | [aistudio.google.com](https://aistudio.google.com) |
+| ElevenLabs | Text-to-speech | Free tier available | [elevenlabs.io](https://elevenlabs.io) |
+| Railway | Deployment | $5 free monthly | [railway.app](https://railway.app) |
 
 ---
 
@@ -209,44 +271,23 @@ cd AI_VOICEC_BACKEND
 npm install
 ```
 
-### 3. Set up environment variables
+### 3. Create environment file
 
-Create a `.env` file in the root directory:
-
-```env
-# Server
-PORT=3001
-
-# Twilio - Get from https://console.twilio.com
-TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_PHONE_NUMBER=+1234567890
-
-# Deepgram - Get from https://console.deepgram.com
-DEEPGRAM_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-
-# Gemini - Get from https://aistudio.google.com/apikey
-GEMINI_API_KEY=AIzaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-
-# ElevenLabs - Get from https://elevenlabs.io/api
-ELEVENLABS_API_KEY=sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-ELEVENLABS_VOICE_ID=EXAVITQu4vr4xnSDxMaL
+```bash
+cp .env.example .env
+# Then edit .env with your API keys
 ```
 
-### 4. Build the project
+### 4. Build TypeScript
 
 ```bash
 npm run build
 ```
 
-### 5. Start the server
+### 5. Start development server
 
 ```bash
-# Development (with hot reload)
 npm run dev
-
-# Production
-npm run start
 ```
 
 ---
@@ -255,152 +296,228 @@ npm run start
 
 ### Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `PORT` | No | Server port (default: 3001) |
-| `TWILIO_ACCOUNT_SID` | Yes | Twilio Account SID |
-| `TWILIO_AUTH_TOKEN` | Yes | Twilio Auth Token |
-| `TWILIO_PHONE_NUMBER` | No | Your Twilio phone number |
-| `DEEPGRAM_API_KEY` | Yes | Deepgram API key for STT |
-| `GEMINI_API_KEY` | Yes | Google Gemini API key |
-| `ELEVENLABS_API_KEY` | Yes | ElevenLabs API key for TTS |
-| `ELEVENLABS_VOICE_ID` | No | Voice ID (default: Sarah) |
+Create a `.env` file with the following:
 
-### Deepgram Configuration
+```env
+# Twilio (required)
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
-The transcriber is configured for telephony audio:
+# Deepgram - Real-time Speech-to-Text (required)
+DEEPGRAM_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
-- **Encoding**: mulaw (8-bit)
-- **Sample Rate**: 8000 Hz
-- **Model**: nova-2 (fastest, most accurate)
-- **Language**: en-GB (British English)
-- **Endpointing**: 300ms silence triggers end of speech
+# Google Gemini AI (required)
+GEMINI_API_KEY=AIzaSyxxxxxxxxxxxxxxxxxxxxxxxxxx
 
-### ElevenLabs Voice Options
+# ElevenLabs Text-to-Speech (required)
+ELEVENLABS_API_KEY=sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ELEVENLABS_VOICE_ID=qVp1puw1HjHIbF91A9Xi
 
-Popular voice IDs for the `ELEVENLABS_VOICE_ID` setting:
+# Diaspora AI Visa API (optional but recommended)
+DIASPORA_AI_VISA_API_KEY=dsp_visa_xxxxxxxxxxxxxxxxxxxxxxxx
 
-| Voice ID | Name | Description |
-|----------|------|-------------|
-| `EXAVITQu4vr4xnSDxMaL` | Sarah | Warm, friendly female |
-| `21m00Tcm4TlvDq8ikWAM` | Rachel | Professional female |
-| `AZnzlk1XvdvUeBnXmlld` | Domi | Confident female |
-| `ErXwobaYiN019PkySvjV` | Antoni | Warm male |
-| `VR6AewLTigWG4xSOukaG` | Arnold | British male |
+# Server (optional)
+PORT=8080
+```
+
+### Voice Configuration
+
+The default voice ID `qVp1puw1HjHIbF91A9Xi` is configured for Diaspora AI. To change the voice:
+
+1. Go to [ElevenLabs Voice Library](https://elevenlabs.io/voice-library)
+2. Find a voice you like
+3. Copy the Voice ID
+4. Update `ELEVENLABS_VOICE_ID` in your environment
 
 ---
 
-## 🛠️ Development
+## 🔧 Development
 
-### Scripts
+### Available Scripts
 
 ```bash
-npm run dev    # Start with hot reload (tsx watch)
-npm run build  # Compile TypeScript to dist/
-npm run start  # Run compiled JavaScript
-npm run lint   # Run ESLint
+npm run dev      # Start with hot reload (ts-node-dev)
+npm run build    # Compile TypeScript to JavaScript
+npm run start    # Run compiled JavaScript
+npm run lint     # Run ESLint
 ```
 
-### Local Testing with ngrok
+### Local Development with ngrok
 
 Since Twilio needs a public URL, use ngrok for local development:
 
 ```bash
-# Terminal 1: Start the server
+# Terminal 1: Start your server
 npm run dev
 
 # Terminal 2: Expose with ngrok
-ngrok http 3001
+ngrok http 8080
 ```
 
-Then set your Twilio webhook to: `https://xxxx.ngrok.io/incoming-call`
+Then update your Twilio webhook to the ngrok URL.
 
 ---
 
-## 🚢 Deployment
+## 🚀 Deployment
 
 ### Deploy to Railway
 
-1. **Push to GitHub**
-   ```bash
-   git add .
-   git commit -m "Initial commit"
-   git push origin main
-   ```
+1. **Connect to Railway:**
+```bash
+railway login
+railway link
+```
 
-2. **Connect Railway**
-   - Go to [Railway](https://railway.app)
-   - Create new project → Deploy from GitHub repo
-   - Select your repository
+2. **Set environment variables:**
+```bash
+railway variables set TWILIO_ACCOUNT_SID=ACxxx
+railway variables set TWILIO_AUTH_TOKEN=xxx
+railway variables set DEEPGRAM_API_KEY=xxx
+railway variables set GEMINI_API_KEY=AIzaSyxxx
+railway variables set ELEVENLABS_API_KEY=sk_xxx
+railway variables set ELEVENLABS_VOICE_ID=qVp1puw1HjHIbF91A9Xi
+railway variables set DIASPORA_AI_VISA_API_KEY=dsp_visa_xxx
+```
 
-3. **Add Environment Variables**
-   - In Railway dashboard, go to Variables
-   - Add all the environment variables from your `.env`
+3. **Deploy:**
+```bash
+git push
+# Railway auto-deploys from GitHub
+```
 
-4. **Get Your URL**
-   - Railway will provide a URL like: `https://your-app.railway.app`
+### Configure Twilio
 
-5. **Configure Twilio**
-   - Go to [Twilio Console](https://console.twilio.com) → Phone Numbers
-   - Select your phone number
-   - Under "Voice & Fax", set:
-     - **A call comes in**: Webhook
-     - **URL**: `https://your-app.railway.app/incoming-call`
-     - **HTTP Method**: POST
-
-6. **Test!**
-   - Call your Twilio phone number
-   - You should hear: "Hi there! Thanks for calling Tony's Burger Joint..."
+1. Go to [Twilio Console](https://console.twilio.com)
+2. Navigate to Phone Numbers → Manage → Active Numbers
+3. Click your phone number
+4. Under "Voice Configuration":
+   - Set "A call comes in" to **Webhook**
+   - URL: `https://your-app.railway.app/incoming-call`
+   - HTTP Method: **POST**
+5. Save
 
 ---
 
-## 📡 API Endpoints
+## 🔌 API Endpoints
 
-### HTTP Endpoints
+### `POST /incoming-call`
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/` | Health check with service info |
-| `GET` | `/health` | Detailed health check with session stats |
-| `POST` | `/incoming-call` | Twilio webhook for incoming calls |
-| `POST` | `/call-status` | Twilio status callback (optional) |
+Twilio webhook endpoint. Returns TwiML to establish a bidirectional Media Stream.
 
-### WebSocket Endpoint
+**Response (TwiML):**
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Connect>
+        <Stream url="wss://your-app.railway.app/media-stream">
+            <Parameter name="callSid" value="CAxxxxxx"/>
+        </Stream>
+    </Connect>
+</Response>
+```
 
-| Path | Description |
-|------|-------------|
-| `ws://host/media-stream` | Twilio Media Stream connection |
+### `POST /call-status`
 
-### Example Health Check Response
+Optional callback for call status events (completed, busy, failed, etc.)
 
+### `GET /health`
+
+Health check endpoint for monitoring.
+
+**Response:**
 ```json
 {
   "status": "healthy",
-  "activeSessions": 2,
-  "uptime": 3600.5
+  "timestamp": "2026-02-10T12:00:00.000Z"
 }
+```
+
+### `WS /media-stream`
+
+WebSocket endpoint for Twilio Media Streams. Handles:
+- `connected` - Initial connection
+- `start` - Stream metadata
+- `media` - Audio chunks (base64 μ-law)
+- `mark` - Playback completion
+- `stop` - Stream ended
+
+---
+
+## 🛂 Visa API Integration
+
+The backend integrates with the Diaspora AI Visa Requirements API to provide real-time visa information.
+
+### How It Works
+
+1. **Detection:** When a user asks about visas, the brain detects keywords like "visa", "do I need", "travel requirement"
+
+2. **Parsing:** Country names are extracted and converted to ISO codes:
+   - "Ghana" → GH
+   - "London" / "UK" / "United Kingdom" → GB
+   - "Nigeria" → NG
+
+3. **API Call:** Request is made to `https://app.diasporaai.dev/api/v1/visa`
+
+4. **Response Formatting:** API data is converted to natural speech
+
+### Supported Countries
+
+| Code | Country | Code | Country |
+|------|---------|------|---------|
+| GH | Ghana | GB | United Kingdom |
+| NG | Nigeria | US | United States |
+| KE | Kenya | CA | Canada |
+| ZA | South Africa | DE | Germany |
+| EG | Egypt | FR | France |
+
+### Example Request
+
+```typescript
+const result = await checkVisaRequirements('GH', 'GB');
+// Returns visa type, requirements, documents needed, etc.
 ```
 
 ---
 
 ## 🧪 Testing
 
+### Test Locally
+
+1. Start the server with `npm run dev`
+2. Use ngrok: `ngrok http 8080`
+3. Update Twilio webhook to ngrok URL
+4. Call your Twilio number
+
 ### Test Scenarios
 
-Once deployed, call your Twilio number and test:
+| Scenario | What to Say | Expected Response |
+|----------|-------------|-------------------|
+| Greeting | (Just answer) | "Hello! Thank you for calling Diaspora AI..." |
+| General Info | "What is Diaspora AI?" | Explains the company and services |
+| Booking | "I want to book a flight" | Directs to WhatsApp or website |
+| Visa Query | "Do I need a visa from Ghana to UK?" | Fetches from Visa API and responds |
+| Payment | "Can I pay with mobile money?" | Lists MTN MoMo, M-Pesa, etc. |
+| Human | "Can I speak to someone?" | Offers to transfer to support |
 
-| Test | What to Say | Expected Response |
-|------|-------------|-------------------|
-| **Basic** | "Hello" | Greeting and offer to help |
-| **Hours** | "What are your hours?" | Business hours |
-| **Menu** | "What burgers do you have?" | List of burgers with prices |
-| **Order** | "I want a chicken burger" | Confirmation and follow-up |
-| **Memory** | "Make that two" | Should remember context |
-| **Edge case** | Stay silent 10 seconds | Should handle gracefully |
+### Logs to Watch
 
-### Latency Measurement
-
-Time the gap between when you stop speaking and when the AI starts responding. Target is under 1.5 seconds.
+```
+📞 Incoming call received
+🔌 New WebSocket connection
+🔗 Twilio Media Stream connected
+📞 Call started - SID: CAxxxxx
+🎤 Connecting to Deepgram...
+🎤 Deepgram connected
+💬 [ASSISTANT]: Hello! Thank you for calling Diaspora AI...
+🔊 TTS completed in 337ms
+📤 Sent 15 audio chunks to Twilio
+✓ Audio playback complete: response-end-1
+🎤 Final transcript: "Do I need a visa from Ghana to UK?"
+💬 [USER]: Do I need a visa from Ghana to UK?
+🛂 Visa query detected: GH → GB
+🛂 Visa response generated in 245ms
+📤 Sent 12 audio chunks to Twilio
+```
 
 ---
 
@@ -408,57 +525,74 @@ Time the gap between when you stop speaking and when the AI starts responding. T
 
 ### Common Issues
 
-**"Deepgram connection timeout"**
-- Check your `DEEPGRAM_API_KEY` is valid
-- Ensure you have credits remaining in Deepgram
+#### "Audio sounds robotic/broken"
+- **Cause:** Wrong audio format
+- **Fix:** Ensure ElevenLabs is using `ulaw_8000` in URL params (not body)
 
-**"No audio from AI"**
-- Check `ELEVENLABS_API_KEY` is valid
-- Verify `ELEVENLABS_VOICE_ID` exists
+#### "AI doesn't hear some words"
+- **Cause:** Endpointing too aggressive
+- **Fix:** Increase `endpointing` from 300ms to 500ms in transcriber.ts
 
-**"Webhook returns 500"**
-- Check Railway logs for errors
-- Ensure all environment variables are set
+#### "Long pauses before AI responds"
+- **Cause:** High latency in one of the services
+- **Fix:** Check Gemini response time in logs, consider shorter prompts
 
-**"AI doesn't respond"**
-- Check `GEMINI_API_KEY` is valid
-- Look for errors in server logs
+#### "Visa API not working"
+- **Cause:** Missing API key
+- **Fix:** Set `DIASPORA_AI_VISA_API_KEY` in Railway environment
 
-### Viewing Logs
-
-```bash
-# Railway
-railway logs
-
-# Local
-npm run dev  # Logs to console
-```
+#### "WebSocket connection failing"
+- **Cause:** Wrong URL in TwiML
+- **Fix:** Ensure WebSocket URL uses `wss://` (not `https://`)
 
 ### Debug Mode
 
-Add to your environment for verbose logging:
-```env
-DEBUG=true
-```
+Enable verbose logging by checking the console output. Key log prefixes:
+- 📞 = Call events
+- 🎤 = Transcription
+- 🧠 = AI processing
+- 🛂 = Visa API
+- 🔊 = TTS
+- 📤 = Audio sending
+- ✓ = Playback complete
 
 ---
 
-## 📄 License
+## 📊 Performance Metrics
 
-MIT License - See LICENSE file for details.
+Current production performance:
+
+| Metric | Value |
+|--------|-------|
+| Greeting latency | ~400ms |
+| Response latency | 600-800ms |
+| Visa API latency | 200-400ms |
+| TTS latency | 200-300ms |
+| Audio chunk size | 200ms |
+| End-to-end | ~1-1.5s |
 
 ---
 
-## 🤝 Contributing
+## 🛡️ Security Considerations
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- All API keys stored in environment variables
+- No credentials in code or git
+- HTTPS/WSS for all connections
+- Railway provides SSL termination
+- Twilio validates webhook signatures (optional enhancement)
 
 ---
 
-## 📞 Support
+## 📝 License
 
-For issues or questions, please open a GitHub issue.
+MIT License - Built for Diaspora AI by Travis
+
+---
+
+## 🔗 Related Links
+
+- **Diaspora AI Website:** [diasporaai.dev](https://diasporaai.dev)
+- **Booking App:** [app.diasporaai.dev](https://app.diasporaai.dev)
+- **Visa API Docs:** [app.diasporaai.dev/api/v1/visa](https://app.diasporaai.dev/api/v1/visa)
+- **GitHub Repository:** [github.com/angeloasante/AI_VOICEC_BACKEND](https://github.com/angeloasante/AI_VOICEC_BACKEND)
+- **Railway Dashboard:** [railway.app](https://railway.app)
