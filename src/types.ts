@@ -49,7 +49,8 @@ export interface CallSession {
   conversationHistory: ConversationMessage[];
   isProcessing: boolean;
   currentTranscript: string;
-  visaContext?: VisaContext;  // Track visa info across conversation
+  visaContext?: VisaContext;
+  shouldEndCall: boolean;  // Flag to signal call should end
 }
 
 // Business knowledge data

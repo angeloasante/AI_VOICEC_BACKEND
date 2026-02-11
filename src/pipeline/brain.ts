@@ -12,11 +12,44 @@ import {
   updateVisaContext, 
   getVisaContext, 
   hasCompleteVisaInfo,
-  markVisaApiCalled 
+  markVisaApiCalled,
+  markCallForEnding 
 } from './call-session.js';
 
 // Initialize Gemini client
 const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
+
+/**
+ * Check if user wants to end the call
+ * Returns true for goodbye phrases
+ */
+function isGoodbyeIntent(message: string): boolean {
+  const lowerMessage = message.toLowerCase().trim();
+  
+  // Direct goodbye phrases
+  const goodbyePhrases = [
+    'goodbye', 'good bye', 'bye', 'bye bye', 'byebye',
+    "that's all", 'thats all', 'that is all',
+    'thanks bye', 'thank you bye', 'thanks goodbye',
+    "i'm done", 'im done', 'i am done',
+    'nothing else', 'no thanks', 'no thank you',
+    'have a good day', 'have a nice day',
+    'take care', 'cheers', 'later', 'see you',
+    'end call', 'hang up', "i'll go", 'i have to go',
+    "that's it", 'thats it', 'that will be all',
+    'no more questions', 'no further questions',
+  ];
+  
+  // Check if message matches any goodbye phrase
+  for (const phrase of goodbyePhrases) {
+    if (lowerMessage.includes(phrase)) {
+      console.log(`👋 Goodbye intent detected: "${message}"`);
+      return true;
+    }
+  }
+  
+  return false;
+}
 
 /**
  * Check if user is asking about visa requirements
@@ -194,16 +227,33 @@ function isVisaQuery(message: string): { isVisa: boolean; passport?: string; des
 /**
  * Generate a response using Gemini AI
  * Streams the response for lower latency
+ * Returns { response: string, shouldEndCall: boolean }
  */
 export async function generateResponse(
   streamSid: string,
   userMessage: string,
   onChunk: (text: string) => void | Promise<void>
-): Promise<string> {
+): Promise<{ response: string; shouldEndCall: boolean }> {
   const startTime = Date.now();
   
   // Add user message to conversation history
   addMessage(streamSid, 'user', userMessage);
+  
+  // Check for goodbye intent FIRST
+  if (isGoodbyeIntent(userMessage)) {
+    const goodbyeResponse = "Thank you for calling Diaspora AI! Have a wonderful day and safe travels. Goodbye!";
+    
+    // Mark the call for ending
+    markCallForEnding(streamSid);
+    
+    await onChunk(goodbyeResponse);
+    addMessage(streamSid, 'assistant', goodbyeResponse);
+    
+    const latency = Date.now() - startTime;
+    console.log(`👋 Goodbye response generated in ${latency}ms - Call will end after audio plays`);
+    
+    return { response: goodbyeResponse, shouldEndCall: true };
+  }
   
   // Check if THIS message contains visa-related info
   const visaCheck = isVisaQuery(userMessage);
@@ -262,7 +312,7 @@ export async function generateResponse(
       console.log(`🛂 Visa response generated in ${latency}ms`);
       
       addMessage(streamSid, 'assistant', visaResponse);
-      return visaResponse;
+      return { response: visaResponse, shouldEndCall: false };
     } else {
       // Visa API failed or route not available - give user-friendly feedback
       console.log(`🛂 Visa API failed:`, visaResult.error);
@@ -273,7 +323,7 @@ export async function generateResponse(
       
       const latency = Date.now() - startTime;
       console.log(`🛂 Visa fallback response in ${latency}ms`);
-      return fallbackResponse;
+      return { response: fallbackResponse, shouldEndCall: false };
     }
   }
   
@@ -360,7 +410,7 @@ Remember: Keep your response concise and natural for a phone call. Don't use bul
     // Add assistant response to conversation history
     addMessage(streamSid, 'assistant', fullResponse);
     
-    return fullResponse;
+    return { response: fullResponse, shouldEndCall: false };
     
   } catch (error) {
     console.error('❌ Gemini API error:', error);
@@ -370,7 +420,7 @@ Remember: Keep your response concise and natural for a phone call. Don't use bul
     addMessage(streamSid, 'assistant', fallback);
     await onChunk(fallback);
     
-    return fallback;
+    return { response: fallback, shouldEndCall: false };
   }
 }
 

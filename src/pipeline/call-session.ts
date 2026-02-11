@@ -3,6 +3,9 @@ import type { CallSession, ConversationMessage, VisaContext } from '../types.js'
 // In-memory store for active call sessions
 const activeSessions = new Map<string, CallSession>();
 
+// Store callSid -> streamSid mapping for ending calls
+const callSidToStreamSid = new Map<string, string>();
+
 /**
  * Create a new call session
  */
@@ -14,10 +17,12 @@ export function createSession(callSid: string, streamSid: string): CallSession {
     conversationHistory: [],
     isProcessing: false,
     currentTranscript: '',
-    visaContext: {},  // Initialize empty visa context
+    visaContext: {},
+    shouldEndCall: false,  // Flag to signal call should end
   };
   
   activeSessions.set(streamSid, session);
+  callSidToStreamSid.set(callSid, streamSid);
   console.log(`📞 Session created for call ${callSid} (stream: ${streamSid})`);
   
   return session;
@@ -155,4 +160,31 @@ export function hasCompleteVisaInfo(streamSid: string): boolean {
  */
 export function markVisaApiCalled(streamSid: string): void {
   updateVisaContext(streamSid, { apiCalled: true });
+}
+
+/**
+ * Mark that the call should end after the current response
+ */
+export function markCallForEnding(streamSid: string): void {
+  const session = activeSessions.get(streamSid);
+  if (session) {
+    session.shouldEndCall = true;
+    console.log(`📴 Call marked for ending: ${session.callSid}`);
+  }
+}
+
+/**
+ * Check if the call should end
+ */
+export function shouldEndCall(streamSid: string): boolean {
+  const session = activeSessions.get(streamSid);
+  return session?.shouldEndCall ?? false;
+}
+
+/**
+ * Get callSid from streamSid
+ */
+export function getCallSid(streamSid: string): string | undefined {
+  const session = activeSessions.get(streamSid);
+  return session?.callSid;
 }

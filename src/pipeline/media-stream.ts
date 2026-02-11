@@ -1,5 +1,6 @@
 import WebSocket from 'ws';
 import { EventEmitter } from 'events';
+import twilio from 'twilio';
 import type { TwilioMediaMessage } from '../types.js';
 import { Transcriber } from './transcriber.js';
 import { Synthesizer } from './synthesizer.js';
@@ -9,7 +10,12 @@ import {
   endSession,
   setProcessing,
   isProcessing,
+  shouldEndCall,
 } from './call-session.js';
+import { config } from '../config.js';
+
+// Initialize Twilio client for call management
+const twilioClient = twilio(config.twilio.accountSid, config.twilio.authToken);
 
 /**
  * Handles a single Twilio Media Stream WebSocket connection
@@ -170,7 +176,7 @@ export class MediaStreamHandler extends EventEmitter {
       this.clearAudioQueue();
 
       // Generate AI response with streaming
-      await generateResponse(
+      const result = await generateResponse(
         this.streamSid,
         transcript,
         async (textChunk) => {
@@ -178,6 +184,24 @@ export class MediaStreamHandler extends EventEmitter {
           await this.speakResponse(textChunk);
         }
       );
+      
+      // Check if we should end the call after the response
+      if (result.shouldEndCall && this.callSid) {
+        console.log(`👋 Call ending after goodbye - waiting for audio to finish...`);
+        
+        // Wait a bit for audio to play, then end the call
+        setTimeout(async () => {
+          try {
+            if (this.callSid) {
+              console.log(`📞 Ending call: ${this.callSid}`);
+              await twilioClient.calls(this.callSid).update({ status: 'completed' });
+              console.log(`✅ Call ended successfully`);
+            }
+          } catch (error) {
+            console.error('❌ Error ending call:', error);
+          }
+        }, 4000); // Wait 4 seconds for goodbye audio to play
+      }
     } catch (error) {
       console.error('Error processing transcript:', error);
     } finally {
