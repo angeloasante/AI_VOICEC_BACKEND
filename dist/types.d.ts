@@ -34,15 +34,21 @@ export interface VisaContext {
     destination?: string;
     residence?: string;
     apiCalled?: boolean;
+    lastVisaResponse?: string;
+    visaRequired?: boolean;
 }
 export interface CallSession {
     callSid: string;
     streamSid: string;
+    callerPhone?: string;
     startTime: Date;
     conversationHistory: ConversationMessage[];
     isProcessing: boolean;
     currentTranscript: string;
     visaContext?: VisaContext;
+    shouldEndCall: boolean;
+    smsConsent: boolean;
+    smsSent: boolean;
 }
 export interface BusinessKnowledge {
     name: string;

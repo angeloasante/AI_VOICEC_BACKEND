@@ -2,7 +2,7 @@ import type { CallSession, VisaContext } from '../types.js';
 /**
  * Create a new call session
  */
-export declare function createSession(callSid: string, streamSid: string): CallSession;
+export declare function createSession(callSid: string, streamSid: string, callerPhone?: string): CallSession;
 /**
  * Get an existing session by stream SID
  */
@@ -54,4 +54,40 @@ export declare function hasCompleteVisaInfo(streamSid: string): boolean;
  * Mark that we've called the Visa API for this combo
  */
 export declare function markVisaApiCalled(streamSid: string): void;
+/**
+ * Mark that the call should end after the current response
+ */
+export declare function markCallForEnding(streamSid: string): void;
+/**
+ * Check if the call should end
+ */
+export declare function shouldEndCall(streamSid: string): boolean;
+/**
+ * Get callSid from streamSid
+ */
+export declare function getCallSid(streamSid: string): string | undefined;
+/**
+ * Get caller phone number from session
+ */
+export declare function getCallerPhone(streamSid: string): string | undefined;
+/**
+ * Set SMS consent for the session
+ */
+export declare function setSMSConsent(streamSid: string, consent: boolean): void;
+/**
+ * Check if user has consented to SMS
+ */
+export declare function hasSMSConsent(streamSid: string): boolean;
+/**
+ * Mark that SMS has been sent for this call
+ */
+export declare function markSMSSent(streamSid: string): void;
+/**
+ * Check if SMS has already been sent this call
+ */
+export declare function hasSMSBeenSent(streamSid: string): boolean;
+/**
+ * Check if we can send SMS (has consent, hasn't been sent, and has phone number)
+ */
+export declare function canSendSMS(streamSid: string): boolean;
 //# sourceMappingURL=call-session.d.ts.map

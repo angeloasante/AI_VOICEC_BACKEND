@@ -35,8 +35,9 @@ router.post('/incoming-call', (req: Request, res: Response) => {
     // track: 'both_tracks',
   });
 
-  // Add custom parameters if needed
+  // Add custom parameters - pass caller info for SMS functionality
   stream.parameter({ name: 'callSid', value: req.body.CallSid || '' });
+  stream.parameter({ name: 'callerPhone', value: req.body.From || '' });
 
   // Send TwiML response
   res.type('text/xml');

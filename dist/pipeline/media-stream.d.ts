@@ -59,6 +59,10 @@ export declare class MediaStreamHandler extends EventEmitter {
      */
     private clearAudioQueue;
     /**
+     * Handle barge-in: user started speaking, stop AI immediately
+     */
+    private handleBargeIn;
+    /**
      * Clean up resources
      */
     private cleanup;

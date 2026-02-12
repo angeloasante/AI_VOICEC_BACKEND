@@ -15,6 +15,9 @@ exports.config = {
         accountSid: process.env.TWILIO_ACCOUNT_SID || '',
         authToken: process.env.TWILIO_AUTH_TOKEN || '',
         phoneNumber: process.env.TWILIO_PHONE_NUMBER || '',
+        // SMS settings
+        messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID || '',
+        smsSenderId: process.env.TWILIO_SMS_SENDER || 'Diaspora AI',
     },
     // Deepgram - Real-time Speech-to-Text
     deepgram: {
@@ -31,7 +34,7 @@ exports.config = {
     elevenlabs: {
         apiKey: process.env.ELEVENLABS_API_KEY || '',
         voiceId: process.env.ELEVENLABS_VOICE_ID || 'qVp1puw1HjHIbF91A9Xi', // Diaspora AI voice
-        modelId: 'eleven_turbo_v2_5',
+        modelId: 'eleven_v3', // v3 for most expressive, human-like speech with emotions
     },
     // Diaspora AI - Visa API
     diasporaAI: {

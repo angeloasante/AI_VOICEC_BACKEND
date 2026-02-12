@@ -4,6 +4,8 @@ export declare const config: {
         accountSid: string;
         authToken: string;
         phoneNumber: string;
+        messagingServiceSid: string;
+        smsSenderId: string;
     };
     deepgram: {
         apiKey: string;

@@ -9,21 +9,24 @@ const callSidToStreamSid = new Map<string, string>();
 /**
  * Create a new call session
  */
-export function createSession(callSid: string, streamSid: string): CallSession {
+export function createSession(callSid: string, streamSid: string, callerPhone?: string): CallSession {
   const session: CallSession = {
     callSid,
     streamSid,
+    callerPhone,
     startTime: new Date(),
     conversationHistory: [],
     isProcessing: false,
     currentTranscript: '',
     visaContext: {},
     shouldEndCall: false,  // Flag to signal call should end
+    smsConsent: false,     // Default: no consent until detected
+    smsSent: false,        // Track if we've sent SMS this call
   };
   
   activeSessions.set(streamSid, session);
   callSidToStreamSid.set(callSid, streamSid);
-  console.log(`📞 Session created for call ${callSid} (stream: ${streamSid})`);
+  console.log(`📞 Session created for call ${callSid} (stream: ${streamSid})${callerPhone ? ` from ${callerPhone.substring(0, 6)}****` : ''}`);
   
   return session;
 }
@@ -187,4 +190,64 @@ export function shouldEndCall(streamSid: string): boolean {
 export function getCallSid(streamSid: string): string | undefined {
   const session = activeSessions.get(streamSid);
   return session?.callSid;
+}
+
+/**
+ * Get caller phone number from session
+ */
+export function getCallerPhone(streamSid: string): string | undefined {
+  const session = activeSessions.get(streamSid);
+  return session?.callerPhone;
+}
+
+/**
+ * Set SMS consent for the session
+ */
+export function setSMSConsent(streamSid: string, consent: boolean): void {
+  const session = activeSessions.get(streamSid);
+  if (session) {
+    session.smsConsent = consent;
+    console.log(`📱 SMS consent ${consent ? 'granted' : 'revoked'} for call ${session.callSid}`);
+  }
+}
+
+/**
+ * Check if user has consented to SMS
+ */
+export function hasSMSConsent(streamSid: string): boolean {
+  const session = activeSessions.get(streamSid);
+  return session?.smsConsent ?? false;
+}
+
+/**
+ * Mark that SMS has been sent for this call
+ */
+export function markSMSSent(streamSid: string): void {
+  const session = activeSessions.get(streamSid);
+  if (session) {
+    session.smsSent = true;
+    console.log(`📱 SMS marked as sent for call ${session.callSid}`);
+  }
+}
+
+/**
+ * Check if SMS has already been sent this call
+ */
+export function hasSMSBeenSent(streamSid: string): boolean {
+  const session = activeSessions.get(streamSid);
+  return session?.smsSent ?? false;
+}
+
+/**
+ * Check if we can send SMS (has consent, hasn't been sent, and has phone number)
+ */
+export function canSendSMS(streamSid: string): boolean {
+  const session = activeSessions.get(streamSid);
+  if (!session) return false;
+  
+  return !!(
+    session.callerPhone &&
+    session.smsConsent &&
+    !session.smsSent
+  );
 }

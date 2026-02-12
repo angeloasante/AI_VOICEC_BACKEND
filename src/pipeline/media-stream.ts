@@ -97,11 +97,14 @@ export class MediaStreamHandler extends EventEmitter {
 
     this.streamSid = message.start.streamSid;
     this.callSid = message.start.callSid;
+    
+    // Get caller phone from custom parameters (passed from webhook)
+    const callerPhone = message.start.customParameters?.callerPhone;
 
     console.log(`📞 Call started - SID: ${this.callSid}, Stream: ${this.streamSid}`);
 
-    // Create session
-    createSession(this.callSid, this.streamSid);
+    // Create session with caller phone for SMS capability
+    createSession(this.callSid, this.streamSid, callerPhone);
 
     // Initialize components
     this.synthesizer = new Synthesizer(this.streamSid);
@@ -113,8 +116,12 @@ export class MediaStreamHandler extends EventEmitter {
     });
 
     this.transcriber.on('interim', (result) => {
-      // Could emit interim results for real-time feedback
-      // console.log(`🎤 Interim: ${result.transcript}`);
+      // Barge-in detection: immediately stop AI speech when user starts talking
+      // Only trigger on meaningful speech (not just "um", "uh", breathing noises)
+      const transcript = result.transcript?.trim() || '';
+      if (transcript.length > 3 && !/^(um+|uh+|ah+|oh+|hm+)$/i.test(transcript)) {
+        this.handleBargeIn();
+      }
     });
 
     this.transcriber.on('error', (error) => {
@@ -323,6 +330,17 @@ export class MediaStreamHandler extends EventEmitter {
         streamSid: this.streamSid,
       };
       this.ws.send(JSON.stringify(clearMessage));
+    }
+  }
+
+  /**
+   * Handle barge-in: user started speaking, stop AI immediately
+   */
+  private handleBargeIn(): void {
+    // Only interrupt if we're currently speaking (have queued audio)
+    if (this.audioQueue.length > 0 || this.isSending) {
+      console.log('🛑 Barge-in detected - stopping AI speech');
+      this.clearAudioQueue();
     }
   }
 

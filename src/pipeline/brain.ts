@@ -13,11 +13,61 @@ import {
   getVisaContext, 
   hasCompleteVisaInfo,
   markVisaApiCalled,
-  markCallForEnding 
+  markCallForEnding,
+  setSMSConsent,
+  hasSMSConsent,
+  canSendSMS,
+  markSMSSent,
+  getCallerPhone,
 } from './call-session.js';
+import { 
+  sendSMS, 
+  sendVisaInfoSMS, 
+  sendBookingLinkSMS,
+  isSMSEnabled 
+} from '../services/sms.js';
 
 // Initialize Gemini client
 const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
+
+/**
+ * Check if user consents to receiving SMS or is proactively requesting it
+ * Returns { consents, declines, proactiveRequest }
+ */
+function checkSMSConsent(message: string): { consents: boolean; declines: boolean; proactiveRequest: boolean } {
+  const lowerMessage = message.toLowerCase().trim();
+  
+  // Proactive SMS request patterns - user asking for SMS without being offered
+  const proactivePatterns = [
+    'send me', 'text me', 'message me', 'sms me',
+    'can you send', 'could you send', 'can you text',
+    'send an sms', 'send a text', 'send a message',
+    'send it to me', 'send that to me',
+    'text that', 'message that', 'sms that',
+  ];
+  
+  const proactiveRequest = proactivePatterns.some(phrase => lowerMessage.includes(phrase));
+  
+  // Consent phrases (response to offer)
+  const consentPhrases = [
+    'yes', 'yeah', 'yep', 'sure', 'please', 'ok', 'okay',
+    'that would be great', 'that would be helpful',
+    'i would like that', 'i\'d like that',
+    'go ahead', 'please do', 'yes please',
+  ];
+  
+  // Decline phrases
+  const declinePhrases = [
+    'no', 'nope', 'no thanks', 'no thank you',
+    'don\'t', 'do not', 'i\'m good', 'i\'m fine',
+    'that\'s okay', 'not necessary', 'no need',
+  ];
+  
+  const consents = consentPhrases.some(phrase => lowerMessage.includes(phrase));
+  const declines = declinePhrases.some(phrase => lowerMessage.includes(phrase));
+  
+  return { consents: consents || proactiveRequest, declines, proactiveRequest };
+}
 
 /**
  * Check if user wants to end the call
@@ -69,20 +119,64 @@ function isVisaQuery(message: string): { isVisa: boolean; passport?: string; des
   // Pattern 1: Detect citizenship/passport explicitly - THIS IS THE KEY FOR VISA
   // Examples: "I'm a Ghanaian citizen", "Ghanaian passport", "I'm Ghanaian", "I hold a Nigerian passport"
   const citizenshipPatterns = [
+    // Direct citizenship statements
     /(?:i'm|i am|im)\s+(?:a\s+)?(\w+)\s+citizen/i,           // "I'm a Ghanaian citizen"
     /(\w+)\s+citizen/i,                                       // "Ghanaian citizen"
-    /(\w+)\s+passport/i,                                      // "Ghanaian passport"
-    /(?:i\s+hold|holding|have)\s+(?:a\s+)?(\w+)\s+passport/i, // "I hold a Ghanaian passport"
+    /(\w+)\s+national\b/i,                                    // "Ghanaian national"
     /citizen\s+of\s+(\w+)/i,                                  // "citizen of Ghana"
     /nationality\s+(?:is\s+)?(\w+)/i,                         // "nationality is Ghanaian"
+    
+    // Passport references
+    /(\w+)\s+passport/i,                                      // "Ghanaian passport"
+    /(?:i\s+hold|holding|have)\s+(?:a\s+)?(\w+)\s+passport/i, // "I hold a Ghanaian passport"
+    /(?:with|using|on)\s+(?:a\s+)?(\w+)\s+passport/i,         // "with a Ghanaian passport", "traveling on a Ghanaian passport"
+    /passport\s+(?:is\s+)?(?:from\s+)?(\w+)/i,                // "my passport is Ghanaian"
+    
+    // "I'm [nationality]" patterns
     /(?:i'm|i am|im)\s+(?:a\s+)?(\w+)$/i,                     // "I'm a Ghanaian" at end of message
-    /(?:i'm|i am|im)\s+(?:a\s+)?(\w+)\s+(?:living|based|residing)/i,  // "I'm a Ghanaian living in..."
+    /(?:i'm|i am|im)\s+(?:a\s+)?(\w+)\s+(?:living|based|residing|currently)/i,  // "I'm a Ghanaian living in..."
+    /(?:i'm|i am|im)\s+(\w+)\s+and/i,                         // "I'm Ghanaian and..."
+    /(?:i'm|i am|im)\s+(?:a\s+)?(\w+)\s*[,\.]/i,              // "I'm Ghanaian, ..." or "I'm Ghanaian."
+    
+    // "as a [nationality]" patterns  
+    /as\s+(?:a\s+)?(\w+)\s+(?:trying|going|wanting|traveling|travelling|planning|looking)/i, // "as a Ghanaian trying to..."
+    /as\s+(?:a\s+)?(\w+)\s+(?:citizen|national|person)/i,     // "as a Ghanaian citizen"
+    /as\s+(?:a\s+)?(\w+)\s+(?:i\s+need|do\s+i)/i,             // "as a Ghanaian I need" or "as a Ghanaian do I need"
+    
+    // "from [country]" patterns - origin often means passport
+    /(?:i'm|i am|im)\s+from\s+(\w+)/i,                        // "I'm from Ghana"
+    /(?:i\s+come|coming)\s+from\s+(\w+)/i,                    // "I come from Ghana"
+    /originally\s+from\s+(\w+)/i,                             // "originally from Ghana"
+    /(?:born|raised)\s+in\s+(\w+)/i,                          // "born in Ghana" (likely passport)
+    
+    // "[nationality] here/person" patterns
+    /(\w+)\s+here\b/i,                                        // "Ghanaian here"
+    /(\w+)\s+person\s+(?:going|trying|wanting|traveling)/i,   // "Ghanaian person going to..."
+    
+    // "a [nationality] going/traveling" - very common phone pattern
+    /\ba\s+(\w+)\s+(?:going|trying|traveling|travelling|wanting)\s+to/i,  // "a Ghanaian going to UK"
+    /\b(\w+)\s+(?:going|trying|traveling|travelling|wanting)\s+to\s+(?:go\s+)?(?:to\s+)?(\w+)/i, // "Ghanaian trying to go to UK"
+    
+    // Requirements for [nationality]
+    /(?:visa|requirements?)\s+(?:for|as)\s+(?:a\s+)?(\w+)/i,  // "visa for Ghanaians", "requirements for a Ghanaian"
+    /(?:for|as)\s+(?:a\s+)?(\w+)\s+(?:citizen|national|passport)/i,  // "for a Ghanaian citizen"
   ];
   
   for (const pattern of citizenshipPatterns) {
     const match = lowerMessage.match(pattern);
     if (match) {
       const nationality = match[1];
+      
+      // Filter out common false positives (verbs, pronouns, etc.)
+      const falsePositiveWords = [
+        'saying', 'going', 'trying', 'looking', 'calling', 'asking', 'thinking',
+        'here', 'there', 'just', 'also', 'still', 'now', 'back', 'good', 'fine',
+        'done', 'sorry', 'sure', 'okay', 'ready', 'able', 'glad', 'happy',
+      ];
+      if (falsePositiveWords.includes(nationality.toLowerCase())) {
+        continue; // Skip this match, try next pattern
+      }
+      
       console.log(`🛂 Citizenship pattern matched: "${nationality}" from pattern: ${pattern}`);
       // Convert nationality to country code (Ghanaian -> GH)
       // Try the full word first (ghanaian -> GH), then try stripping suffix
@@ -101,7 +195,7 @@ function isVisaQuery(message: string): { isVisa: boolean; passport?: string; des
   
   // Pattern 2: Detect destination - "to Zanzibar", "going to Tanzania", etc.
   const destPatterns = [
-    /(?:to|going to|travel(?:ing|ling)?\s+to|visit(?:ing)?)\s+(\w+(?:\s+\w+)?)/i,
+    /(?:to|going to|go to|trying to go to|travel(?:ing|ling)?\s+to|visit(?:ing)?|fly(?:ing)?\s+to)\s+(?:the\s+)?(\w+(?:\s+\w+)?)/i,
   ];
   
   for (const pattern of destPatterns) {
@@ -109,7 +203,8 @@ function isVisaQuery(message: string): { isVisa: boolean; passport?: string; des
     if (match) {
       // Filter out false positives
       const word = match[1].toLowerCase();
-      if (!['me', 'you', 'us', 'them', 'know', 'check', 'help'].includes(word)) {
+      const falsePositives = ['me', 'you', 'us', 'them', 'know', 'check', 'help', 'book', 'get', 'see', 'find'];
+      if (!falsePositives.includes(word)) {
         destination = parseCountryCode(match[1]);
         if (destination) {
           console.log(`🛂 Destination detected: ${destination} (from "${match[1]}")`);
@@ -241,7 +336,25 @@ export async function generateResponse(
   
   // Check for goodbye intent FIRST
   if (isGoodbyeIntent(userMessage)) {
-    const goodbyeResponse = "Thank you for calling Diaspora AI! Have a wonderful day and safe travels. Goodbye!";
+    // Before saying goodbye, send SMS if consented and we have visa info
+    const goodbyeVisaCtx = getVisaContext(streamSid);
+    const goodbyeCallerPhone = getCallerPhone(streamSid);
+    
+    if (canSendSMS(streamSid) && goodbyeVisaCtx?.lastVisaResponse && goodbyeCallerPhone) {
+      console.log(`📱 Sending visa info SMS on call end...`);
+      const smsResult = await sendVisaInfoSMS(
+        goodbyeCallerPhone,
+        goodbyeVisaCtx.passport || 'Your country',
+        goodbyeVisaCtx.destination || 'destination',
+        goodbyeVisaCtx.visaRequired ?? true,
+        goodbyeVisaCtx.lastVisaResponse.substring(0, 300) // Keep SMS concise
+      );
+      if (smsResult.success) {
+        markSMSSent(streamSid);
+      }
+    }
+    
+    const goodbyeResponse = "Alright, take care! Safe travels and feel free to call us anytime. Bye!";
     
     // Mark the call for ending
     markCallForEnding(streamSid);
@@ -253,6 +366,84 @@ export async function generateResponse(
     console.log(`👋 Goodbye response generated in ${latency}ms - Call will end after audio plays`);
     
     return { response: goodbyeResponse, shouldEndCall: true };
+  }
+  
+  // Check for SMS consent response (after we offered to send SMS) OR proactive SMS request
+  const visaCtx = getVisaContext(streamSid);
+  const callerPhone = getCallerPhone(streamSid);
+  const smsConsentCheck = checkSMSConsent(userMessage);
+  
+  // Handle proactive SMS requests (user asks "can you send me an SMS?")
+  if (smsConsentCheck.proactiveRequest && callerPhone && isSMSEnabled()) {
+    console.log(`📱 Proactive SMS request detected: "${userMessage}"`);
+    
+    if (visaCtx?.lastVisaResponse) {
+      // We have visa info to send
+      setSMSConsent(streamSid, true);
+      const smsResult = await sendVisaInfoSMS(
+        callerPhone,
+        visaCtx.passport || 'Your country',
+        visaCtx.destination || 'destination',
+        visaCtx.visaRequired ?? true,
+        visaCtx.lastVisaResponse.substring(0, 300)
+      );
+      
+      let smsResponse: string;
+      if (smsResult.success) {
+        markSMSSent(streamSid);
+        smsResponse = "Done! I've just sent the visa info to your phone. Anything else you need?";
+      } else {
+        console.error(`📱 SMS failed:`, smsResult.error);
+        smsResponse = "Hmm, I'm having trouble sending that right now. You can find all the info on our website at diasporaai.dev. Anything else I can help with?";
+      }
+      
+      await onChunk(smsResponse);
+      addMessage(streamSid, 'assistant', smsResponse);
+      return { response: smsResponse, shouldEndCall: false };
+    } else {
+      // No visa info yet - ask what they want sent
+      const noInfoResponse = "Sure, I can text you! What info would you like me to send? If you tell me where you're traveling from and to, I can send you the visa requirements.";
+      await onChunk(noInfoResponse);
+      addMessage(streamSid, 'assistant', noInfoResponse);
+      return { response: noInfoResponse, shouldEndCall: false };
+    }
+  }
+  
+  // Handle consent responses (user said yes/no to our SMS offer)
+  if (visaCtx?.lastVisaResponse && callerPhone && !hasSMSConsent(streamSid)) {
+    if (smsConsentCheck.consents) {
+      // User said yes - send the SMS
+      setSMSConsent(streamSid, true);
+      console.log(`📱 User consented to SMS, sending visa info...`);
+      
+      const smsResult = await sendVisaInfoSMS(
+        callerPhone,
+        visaCtx.passport || 'Your country',
+        visaCtx.destination || 'destination',
+        visaCtx.visaRequired ?? true,
+        visaCtx.lastVisaResponse.substring(0, 300)
+      );
+      
+      let smsResponse: string;
+      if (smsResult.success) {
+        markSMSSent(streamSid);
+        smsResponse = "I've sent that information to your phone. Is there anything else I can help you with?";
+      } else {
+        smsResponse = "I'm sorry, I couldn't send the text message right now. Is there anything else I can help you with?";
+      }
+      
+      await onChunk(smsResponse);
+      addMessage(streamSid, 'assistant', smsResponse);
+      
+      return { response: smsResponse, shouldEndCall: false };
+    } else if (smsConsentCheck.declines) {
+      // User said no
+      const declineResponse = "No problem at all! Is there anything else I can help you with?";
+      await onChunk(declineResponse);
+      addMessage(streamSid, 'assistant', declineResponse);
+      
+      return { response: declineResponse, shouldEndCall: false };
+    }
   }
   
   // Check if THIS message contains visa-related info
@@ -305,14 +496,29 @@ export async function generateResponse(
     if (visaResult.success && visaResult.data) {
       const visaResponse = formatVisaResponse(visaResult.data);
       
+      // Build response with SMS offer if enabled
+      let fullResponse = visaResponse;
+      const callerPhone = getCallerPhone(streamSid);
+      
+      if (isSMSEnabled() && callerPhone && !hasSMSConsent(streamSid)) {
+        fullResponse += " Would you like me to send this information to you as a text message?";
+      }
+      
       // Send the FULL visa response as one chunk for consistent speech
-      await onChunk(visaResponse);
+      await onChunk(fullResponse);
       
       const latency = Date.now() - startTime;
       console.log(`🛂 Visa response generated in ${latency}ms`);
       
-      addMessage(streamSid, 'assistant', visaResponse);
-      return { response: visaResponse, shouldEndCall: false };
+      addMessage(streamSid, 'assistant', fullResponse);
+      
+      // Store visa data for potential SMS later
+      updateVisaContext(streamSid, { 
+        lastVisaResponse: visaResponse,
+        visaRequired: visaResult.data.visa?.required ?? true,
+      });
+      
+      return { response: fullResponse, shouldEndCall: false };
     } else {
       // Visa API failed or route not available - give user-friendly feedback
       console.log(`🛂 Visa API failed:`, visaResult.error);
@@ -428,7 +634,7 @@ Remember: Keep your response concise and natural for a phone call. Don't use bul
  * Generate a greeting for the start of a call
  */
 export async function generateGreeting(streamSid: string): Promise<string> {
-  const greeting = "Hello! Thank you for calling Diaspora AI, your AI-powered travel assistant. How can I help you today?";
+  const greeting = "Hey there! Thanks for calling Diaspora AI. What can I help you with today?";
   addMessage(streamSid, 'assistant', greeting);
   return greeting;
 }

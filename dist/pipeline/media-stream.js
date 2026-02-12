@@ -6,10 +6,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MediaStreamHandler = void 0;
 const ws_1 = __importDefault(require("ws"));
 const events_1 = require("events");
+const twilio_1 = __importDefault(require("twilio"));
 const transcriber_js_1 = require("./transcriber.js");
 const synthesizer_js_1 = require("./synthesizer.js");
 const brain_js_1 = require("./brain.js");
 const call_session_js_1 = require("./call-session.js");
+const config_js_1 = require("../config.js");
+// Initialize Twilio client for call management
+const twilioClient = (0, twilio_1.default)(config_js_1.config.twilio.accountSid, config_js_1.config.twilio.authToken);
 /**
  * Handles a single Twilio Media Stream WebSocket connection
  * Orchestrates the full voice pipeline: audio in → transcription → AI → TTS → audio out
@@ -81,9 +85,11 @@ class MediaStreamHandler extends events_1.EventEmitter {
             return;
         this.streamSid = message.start.streamSid;
         this.callSid = message.start.callSid;
+        // Get caller phone from custom parameters (passed from webhook)
+        const callerPhone = message.start.customParameters?.callerPhone;
         console.log(`📞 Call started - SID: ${this.callSid}, Stream: ${this.streamSid}`);
-        // Create session
-        (0, call_session_js_1.createSession)(this.callSid, this.streamSid);
+        // Create session with caller phone for SMS capability
+        (0, call_session_js_1.createSession)(this.callSid, this.streamSid, callerPhone);
         // Initialize components
         this.synthesizer = new synthesizer_js_1.Synthesizer(this.streamSid);
         this.transcriber = new transcriber_js_1.Transcriber(this.streamSid);
@@ -92,8 +98,12 @@ class MediaStreamHandler extends events_1.EventEmitter {
             await this.handleTranscript(result.transcript);
         });
         this.transcriber.on('interim', (result) => {
-            // Could emit interim results for real-time feedback
-            // console.log(`🎤 Interim: ${result.transcript}`);
+            // Barge-in detection: immediately stop AI speech when user starts talking
+            // Only trigger on meaningful speech (not just "um", "uh", breathing noises)
+            const transcript = result.transcript?.trim() || '';
+            if (transcript.length > 3 && !/^(um+|uh+|ah+|oh+|hm+)$/i.test(transcript)) {
+                this.handleBargeIn();
+            }
         });
         this.transcriber.on('error', (error) => {
             console.error('🎤 Transcriber error:', error);
@@ -147,10 +157,27 @@ class MediaStreamHandler extends events_1.EventEmitter {
             // Clear any queued audio (interrupt current speech)
             this.clearAudioQueue();
             // Generate AI response with streaming
-            await (0, brain_js_1.generateResponse)(this.streamSid, transcript, async (textChunk) => {
+            const result = await (0, brain_js_1.generateResponse)(this.streamSid, transcript, async (textChunk) => {
                 // Synthesize and queue each text chunk
                 await this.speakResponse(textChunk);
             });
+            // Check if we should end the call after the response
+            if (result.shouldEndCall && this.callSid) {
+                console.log(`👋 Call ending after goodbye - waiting for audio to finish...`);
+                // Wait a bit for audio to play, then end the call
+                setTimeout(async () => {
+                    try {
+                        if (this.callSid) {
+                            console.log(`📞 Ending call: ${this.callSid}`);
+                            await twilioClient.calls(this.callSid).update({ status: 'completed' });
+                            console.log(`✅ Call ended successfully`);
+                        }
+                    }
+                    catch (error) {
+                        console.error('❌ Error ending call:', error);
+                    }
+                }, 4000); // Wait 4 seconds for goodbye audio to play
+            }
         }
         catch (error) {
             console.error('Error processing transcript:', error);
@@ -262,6 +289,16 @@ class MediaStreamHandler extends events_1.EventEmitter {
                 streamSid: this.streamSid,
             };
             this.ws.send(JSON.stringify(clearMessage));
+        }
+    }
+    /**
+     * Handle barge-in: user started speaking, stop AI immediately
+     */
+    handleBargeIn() {
+        // Only interrupt if we're currently speaking (have queued audio)
+        if (this.audioQueue.length > 0 || this.isSending) {
+            console.log('🛑 Barge-in detected - stopping AI speech');
+            this.clearAudioQueue();
         }
     }
     /**

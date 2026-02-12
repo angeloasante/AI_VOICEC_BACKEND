@@ -13,23 +13,39 @@ exports.updateVisaContext = updateVisaContext;
 exports.getVisaContext = getVisaContext;
 exports.hasCompleteVisaInfo = hasCompleteVisaInfo;
 exports.markVisaApiCalled = markVisaApiCalled;
+exports.markCallForEnding = markCallForEnding;
+exports.shouldEndCall = shouldEndCall;
+exports.getCallSid = getCallSid;
+exports.getCallerPhone = getCallerPhone;
+exports.setSMSConsent = setSMSConsent;
+exports.hasSMSConsent = hasSMSConsent;
+exports.markSMSSent = markSMSSent;
+exports.hasSMSBeenSent = hasSMSBeenSent;
+exports.canSendSMS = canSendSMS;
 // In-memory store for active call sessions
 const activeSessions = new Map();
+// Store callSid -> streamSid mapping for ending calls
+const callSidToStreamSid = new Map();
 /**
  * Create a new call session
  */
-function createSession(callSid, streamSid) {
+function createSession(callSid, streamSid, callerPhone) {
     const session = {
         callSid,
         streamSid,
+        callerPhone,
         startTime: new Date(),
         conversationHistory: [],
         isProcessing: false,
         currentTranscript: '',
-        visaContext: {}, // Initialize empty visa context
+        visaContext: {},
+        shouldEndCall: false, // Flag to signal call should end
+        smsConsent: false, // Default: no consent until detected
+        smsSent: false, // Track if we've sent SMS this call
     };
     activeSessions.set(streamSid, session);
-    console.log(`📞 Session created for call ${callSid} (stream: ${streamSid})`);
+    callSidToStreamSid.set(callSid, streamSid);
+    console.log(`📞 Session created for call ${callSid} (stream: ${streamSid})${callerPhone ? ` from ${callerPhone.substring(0, 6)}****` : ''}`);
     return session;
 }
 /**
@@ -152,5 +168,81 @@ function hasCompleteVisaInfo(streamSid) {
  */
 function markVisaApiCalled(streamSid) {
     updateVisaContext(streamSid, { apiCalled: true });
+}
+/**
+ * Mark that the call should end after the current response
+ */
+function markCallForEnding(streamSid) {
+    const session = activeSessions.get(streamSid);
+    if (session) {
+        session.shouldEndCall = true;
+        console.log(`📴 Call marked for ending: ${session.callSid}`);
+    }
+}
+/**
+ * Check if the call should end
+ */
+function shouldEndCall(streamSid) {
+    const session = activeSessions.get(streamSid);
+    return session?.shouldEndCall ?? false;
+}
+/**
+ * Get callSid from streamSid
+ */
+function getCallSid(streamSid) {
+    const session = activeSessions.get(streamSid);
+    return session?.callSid;
+}
+/**
+ * Get caller phone number from session
+ */
+function getCallerPhone(streamSid) {
+    const session = activeSessions.get(streamSid);
+    return session?.callerPhone;
+}
+/**
+ * Set SMS consent for the session
+ */
+function setSMSConsent(streamSid, consent) {
+    const session = activeSessions.get(streamSid);
+    if (session) {
+        session.smsConsent = consent;
+        console.log(`📱 SMS consent ${consent ? 'granted' : 'revoked'} for call ${session.callSid}`);
+    }
+}
+/**
+ * Check if user has consented to SMS
+ */
+function hasSMSConsent(streamSid) {
+    const session = activeSessions.get(streamSid);
+    return session?.smsConsent ?? false;
+}
+/**
+ * Mark that SMS has been sent for this call
+ */
+function markSMSSent(streamSid) {
+    const session = activeSessions.get(streamSid);
+    if (session) {
+        session.smsSent = true;
+        console.log(`📱 SMS marked as sent for call ${session.callSid}`);
+    }
+}
+/**
+ * Check if SMS has already been sent this call
+ */
+function hasSMSBeenSent(streamSid) {
+    const session = activeSessions.get(streamSid);
+    return session?.smsSent ?? false;
+}
+/**
+ * Check if we can send SMS (has consent, hasn't been sent, and has phone number)
+ */
+function canSendSMS(streamSid) {
+    const session = activeSessions.get(streamSid);
+    if (!session)
+        return false;
+    return !!(session.callerPhone &&
+        session.smsConsent &&
+        !session.smsSent);
 }
 //# sourceMappingURL=call-session.js.map

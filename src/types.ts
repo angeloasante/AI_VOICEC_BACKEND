@@ -39,18 +39,23 @@ export interface VisaContext {
   destination?: string;   // Country code of destination
   residence?: string;     // Country code of residence (optional)
   apiCalled?: boolean;    // Whether we've already called the API for this combo
+  lastVisaResponse?: string;  // Last visa response for SMS
+  visaRequired?: boolean;     // Whether visa is required for this route
 }
 
 // Call session state
 export interface CallSession {
   callSid: string;
   streamSid: string;
+  callerPhone?: string;   // Caller's phone number for SMS
   startTime: Date;
   conversationHistory: ConversationMessage[];
   isProcessing: boolean;
   currentTranscript: string;
   visaContext?: VisaContext;
   shouldEndCall: boolean;  // Flag to signal call should end
+  smsConsent: boolean;     // Whether user consented to receive SMS
+  smsSent: boolean;        // Whether we've already sent SMS this call
 }
 
 // Business knowledge data
